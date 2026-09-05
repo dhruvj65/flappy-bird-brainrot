@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#0d1424" />
+    <title>Flappy Fest</title>
+    <link rel="icon" href="assets/character/character-placeholder.svg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <div class="stage" id="stage" data-screen="attract">
+        <canvas id="game" class="stage__canvas" width="288" height="512" aria-label="Flappy Fest game"></canvas>
+
+        <!-- ------------------------------------------------------------ -->
+        <!-- Persistent HUD: score on top, attempt chip beneath it        -->
+        <!-- ------------------------------------------------------------ -->
+        <div class="hud" id="hud" aria-hidden="true">
+          <div class="hud__score" id="hudScore">0</div>
+          <div class="hud__attempt">
+            <span class="hud__attempt-label" id="hudAttemptLabel">ATTEMPT 1 / 3</span>
+            <div class="pips" id="hudPips"></div>
+          </div>
+        </div>
+
+        <button class="sound-toggle" id="soundToggle" data-no-flap type="button" aria-label="Toggle sound">
+          <span id="soundIcon">SOUND ON</span>
+        </button>
+
+        <!-- ------------------------------------------------------------ -->
+        <!-- ATTRACT: name + start on top, live board beneath             -->
+        <!-- ------------------------------------------------------------ -->
+        <section class="screen screen--attract" data-screen="attract" data-no-flap>
+          <div class="split">
+            <div class="split__main">
+              <p class="eyebrow">Tech Fest Arcade</p>
+              <h1 class="title">
+                <span class="title__word">FLAPPY</span>
+                <span class="title__word title__word--accent">FEST</span>
+              </h1>
+              <p class="tagline" id="attractTagline">Three tries. One legend.</p>
+
+              <form class="name-form" id="nameForm" autocomplete="off">
+                <label class="name-form__label" for="playerName">Your name for the leaderboard</label>
+                <div class="name-form__row">
+                  <input
+                    class="name-form__input"
+                    id="playerName"
+                    name="playerName"
+                    type="text"
+                    maxlength="14"
+                    placeholder="TYPE YOUR NAME"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    spellcheck="false"
+                  />
+                  <button class="btn btn--primary btn--jumbo" id="startButton" type="submit">START</button>
+                </div>
+              </form>
+
+              <ul class="how-to">
+                <li><b>TAP</b> / <b>SPACE</b> to flap</li>
+                <li>Fly through the gaps</li>
+                <li><b>Best of 3</b> goes on the board</li>
+              </ul>
+            </div>
+
+            <aside class="split__side">
+              <div class="mini-board" id="miniBoard">
+                <div class="mini-board__head">
+                  <h2 class="panel-title">Top players</h2>
+                  <!-- Only reachable from the attract screen, so navigating away
+                       can never interrupt a session in progress. -->
+                  <a class="mini-board__all" href="/leaderboard.html">See all &rsaquo;</a>
+                </div>
+                <ol class="mini-board__list" id="miniBoardList"></ol>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- ------------------------------------------------------------ -->
+        <!-- SELECT: pick a character before the first attempt            -->
+        <!-- ------------------------------------------------------------ -->
+        <section class="screen screen--select" data-screen="select" data-no-flap>
+          <div class="centre centre--wide">
+            <p class="eyebrow">Choose your flyer</p>
+            <p class="select__player" id="selectPlayer">PLAYER</p>
+            <div class="pips pips--large" id="selectPips"></div>
+            <div class="roster" id="roster"></div>
+            <p class="select__hint">Each one flies through a different sky</p>
+          </div>
+        </section>
+
+        <!-- ------------------------------------------------------------ -->
+        <!-- READY: one tap starts the attempt                            -->
+        <!-- ------------------------------------------------------------ -->
+        <section class="screen screen--ready" data-screen="ready">
+          <div class="centre">
+            <p class="ready__player" id="readyPlayer">PLAYER</p>
+            <p class="ready__attempt" id="readyAttempt">ATTEMPT 1 OF 3</p>
+            <div class="ready__pulse">
+              <span class="ready__tap">TAP TO FLY</span>
+            </div>
+            <p class="ready__hint">Tap anywhere &middot; or press SPACE</p>
+            <div class="pips pips--large" id="readyPips"></div>
+          </div>
+        </section>
+
+        <!-- ------------------------------------------------------------ -->
+        <!-- ATTEMPT OVER                                                 -->
+        <!-- ------------------------------------------------------------ -->
+        <section class="screen screen--over" data-screen="attemptOver" data-no-flap>
+          <div class="centre centre--wide">
+            <p class="over__banner" id="overBanner">ATTEMPT 1 DONE</p>
+
+            <div class="score-row">
+              <div class="stat stat--hero">
+                <span class="stat__label">This attempt</span>
+                <span class="stat__value" id="overScore">0</span>
+              </div>
+              <div class="stat">
+                <span class="stat__label">Best so far</span>
+                <span class="stat__value stat__value--sm" id="overBest">0</span>
+              </div>
+              <div class="stat stat--pips">
+                <span class="stat__label" id="overRemaining">2 attempts left</span>
+                <div class="pips pips--large" id="overPips"></div>
+              </div>
+            </div>
+
+            <div class="action-row">
+              <button class="btn btn--primary btn--jumbo" id="continueButton" type="button">NEXT ATTEMPT</button>
+              <button class="btn btn--ghost" id="abandonButton" type="button">End session &amp; hand over</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ------------------------------------------------------------ -->
+        <!-- SUBMITTING                                                   -->
+        <!-- ------------------------------------------------------------ -->
+        <section class="screen screen--submitting" data-screen="submitting" data-no-flap>
+          <div class="centre">
+            <div class="spinner" aria-hidden="true"></div>
+            <p class="submitting__text">Saving your best score&hellip;</p>
+            <p class="submitting__score" id="submittingScore">0</p>
+          </div>
+        </section>
+
+        <!-- ------------------------------------------------------------ -->
+        <!-- RESULT: rank on top, leaderboard beneath                     -->
+        <!-- ------------------------------------------------------------ -->
+        <section class="screen screen--result" data-screen="result" data-no-flap>
+          <div class="split">
+            <div class="split__main split__main--result">
+              <div class="result__crown" id="resultCrown">Final result</div>
+
+              <div class="rank-badge" id="rankBadge">
+                <span class="rank-badge__hash">#</span>
+                <span class="rank-badge__value" id="rankValue">-</span>
+              </div>
+              <p class="rank-caption" id="rankCaption">on the leaderboard</p>
+
+              <div class="result__best">
+                <span class="result__best-label">Best of 3</span>
+                <span class="result__best-value" id="resultBest">0</span>
+              </div>
+
+              <div class="attempt-strip" id="attemptStrip"></div>
+
+              <button class="btn btn--primary btn--jumbo" id="newPlayerButton" type="button">NEXT PLAYER</button>
+            </div>
+
+            <aside class="split__side">
+              <h2 class="panel-title">Leaderboard</h2>
+              <p class="board-status" id="boardStatus" hidden></p>
+              <ol class="board" id="boardList"></ol>
+            </aside>
+          </div>
+        </section>
+
+        <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+      </div>
+    </main>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

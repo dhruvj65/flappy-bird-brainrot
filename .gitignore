@@ -1,0 +1,21 @@
+node_modules/
+
+# Live event data: real player names and scores. Never committed.
+data/*.json
+data/*.tmp
+data/*.corrupt-*
+!data/.gitkeep
+
+# Fetched on demand by tools/get-audio.mjs (~18 MB binary)
+tools/bin/
+
+# Machine-local Claude Code settings (launch.json IS committed)
+.claude/settings.local.json
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.vscode/
+.idea/

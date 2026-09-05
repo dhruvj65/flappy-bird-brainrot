@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <title>Flappy Fest placeholder character</title>
+  <defs>
+    <radialGradient id="skin" cx="42%" cy="34%" r="72%">
+      <stop offset="0%" stop-color="#ffe2bd"/>
+      <stop offset="70%" stop-color="#f4c48d"/>
+      <stop offset="100%" stop-color="#d99f63"/>
+    </radialGradient>
+    <linearGradient id="hair" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4a4f63"/>
+      <stop offset="100%" stop-color="#2b2f3d"/>
+    </linearGradient>
+  </defs>
+
+  <circle cx="128" cy="128" r="128" fill="url(#skin)"/>
+
+  <!-- hair -->
+  <path d="M28 116c2-56 44-92 100-92s98 36 100 92c-14-26-40-40-64-34-16 4-22 14-36 14s-20-10-36-14c-24-6-50 8-64 34z" fill="url(#hair)"/>
+  <path d="M18 128c-6 22 2 40 14 46-10-18-10-34-6-50z" fill="url(#hair)"/>
+  <path d="M238 128c6 22-2 40-14 46 10-18 10-34 6-50z" fill="url(#hair)"/>
+
+  <!-- ears -->
+  <circle cx="22" cy="140" r="16" fill="#eab887"/>
+  <circle cx="234" cy="140" r="16" fill="#eab887"/>
+
+  <!-- glasses -->
+  <g fill="none" stroke="#22314f" stroke-width="7">
+    <circle cx="92" cy="126" r="30" fill="rgba(255,255,255,0.55)"/>
+    <circle cx="170" cy="126" r="30" fill="rgba(255,255,255,0.55)"/>
+    <path d="M122 126h18"/>
+    <path d="M62 120l-26-6"/>
+    <path d="M200 120l26-6"/>
+  </g>
+
+  <!-- eyes -->
+  <circle cx="96" cy="128" r="10" fill="#1d2433"/>
+  <circle cx="166" cy="128" r="10" fill="#1d2433"/>
+  <circle cx="100" cy="124" r="3.5" fill="#ffffff"/>
+  <circle cx="170" cy="124" r="3.5" fill="#ffffff"/>
+
+  <!-- eyebrows -->
+  <path d="M66 92c16-10 38-10 52-2" stroke="#2b2f3d" stroke-width="9" stroke-linecap="round" fill="none"/>
+  <path d="M138 90c16-8 38-8 52 2" stroke="#2b2f3d" stroke-width="9" stroke-linecap="round" fill="none"/>
+
+  <!-- nose -->
+  <path d="M128 138c-6 14-12 20-4 24 5 3 11 3 16 0" stroke="#c78d54" stroke-width="6" fill="none" stroke-linecap="round"/>
+
+  <!-- moustache -->
+  <path d="M96 178c12-10 22-6 32-6s20-4 32 6c-10 12-22 14-32 14s-22-2-32-14z" fill="#3a3f52"/>
+
+  <!-- grin -->
+  <path d="M100 196c16 14 40 14 56 0-8 16-48 16-56 0z" fill="#7a2b39"/>
+
+  <!-- cheeks -->
+  <circle cx="62" cy="170" r="14" fill="#f2907f" opacity="0.45"/>
+  <circle cx="196" cy="170" r="14" fill="#f2907f" opacity="0.45"/>
+</svg>

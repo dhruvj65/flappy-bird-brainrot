@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flappy Fest - character cutout</title>
+    <style>
+      :root {
+        --bg: #0b1120;
+        --panel: #131c2f;
+        --ink: #eef2ff;
+        --dim: #94a3c4;
+        --accent: #ffd166;
+        --stroke: rgba(255, 255, 255, 0.12);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+        font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+        padding: 24px;
+      }
+      h1 { margin: 0 0 4px; font-size: 22px; }
+      .sub { margin: 0 0 20px; color: var(--dim); font-size: 14px; }
+      .wrap { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; align-items: start; max-width: 1100px; }
+      .panel { background: var(--panel); border: 1px solid var(--stroke); border-radius: 14px; padding: 16px; }
+      .drop {
+        border: 2px dashed var(--stroke); border-radius: 12px; padding: 26px; text-align: center;
+        color: var(--dim); cursor: pointer; margin-bottom: 14px;
+      }
+      .drop.is-over { border-color: var(--accent); color: var(--ink); }
+      #stageWrap { position: relative; display: inline-block; max-width: 100%; }
+      #view { display: block; max-width: 100%; border-radius: 10px; cursor: crosshair;
+              background: repeating-conic-gradient(#2a3550 0% 25%, #222c44 0% 50%) 50% / 20px 20px; }
+      label { display: block; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim); margin: 14px 0 6px; }
+      input[type=range] { width: 100%; }
+      .row { display: flex; gap: 10px; align-items: center; }
+      .val { min-width: 46px; text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 700; }
+      button {
+        width: 100%; margin-top: 8px; padding: 12px; border: none; border-radius: 10px;
+        font: inherit; font-weight: 700; cursor: pointer; background: var(--accent); color: #21160a;
+      }
+      button.secondary { background: transparent; color: var(--dim); border: 1px solid var(--stroke); }
+      button:disabled { opacity: 0.45; cursor: default; }
+      .previews { display: flex; gap: 16px; align-items: flex-end; margin-top: 14px; }
+      .previews figure { margin: 0; text-align: center; }
+      .previews canvas { image-rendering: pixelated; border-radius: 8px; display: block; }
+      figcaption { font-size: 11px; color: var(--dim); margin-top: 6px; }
+      code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 5px; font-size: 13px; }
+      .hint { font-size: 13px; color: var(--dim); margin-top: 14px; }
+      .hint b { color: var(--ink); }
+    </style>
+  </head>
+  <body>
+    <h1>Character cutout</h1>
+    <p class="sub">
+      Drop a photo, put the circle over the head, and save it as
+      <code>face.png</code>. Everything outside the circle becomes transparent.
+    </p>
+
+    <div class="wrap">
+      <div class="panel">
+        <div class="drop" id="drop">
+          Drop a photo here, or click to choose one
+          <input type="file" id="file" accept="image/*" hidden />
+        </div>
+        <div id="stageWrap"><canvas id="view" width="480" height="480"></canvas></div>
+        <p class="hint">
+          <b>Drag on the image</b> to move the circle. <b>Scroll</b> on it to resize.
+        </p>
+      </div>
+
+      <div class="panel">
+        <label for="radius">Circle size</label>
+        <div class="row"><input type="range" id="radius" min="20" max="400" value="150" /><span class="val" id="radiusVal">150</span></div>
+
+        <label for="cut">Background clean-up inside the circle</label>
+        <div class="row"><input type="range" id="cut" min="0" max="120" value="0" /><span class="val" id="cutVal">0</span></div>
+        <p class="hint" style="margin-top:6px">
+          Flood-fills from the circle edge, so a flat backdrop still showing in
+          the corners disappears. Leave at 0 if the circle is already tight.
+        </p>
+
+        <label for="feather">Edge softness</label>
+        <div class="row"><input type="range" id="feather" min="0" max="8" value="2" /><span class="val" id="featherVal">2</span></div>
+
+        <div class="previews">
+          <figure><canvas id="pv1" width="24" height="24" style="width:96px;height:96px"></canvas><figcaption>in game (24px)</figcaption></figure>
+          <figure><canvas id="pv2" width="128" height="128" style="width:128px;height:128px"></canvas><figcaption>cutout</figcaption></figure>
+        </div>
+
+        <button id="save" disabled>Download face.png</button>
+        <button id="reset" class="secondary" type="button">Reset circle</button>
+
+        <p class="hint">
+          Then put the file at
+          <code>public/assets/character/face.png</code> and reload the game.
+        </p>
+      </div>
+    </div>
+
+    <script>
+      const OUTPUT_SIZE = 512;   // exported square; the game downscales it
+
+      const view = document.getElementById('view');
+      const vctx = view.getContext('2d');
+      const pv1 = document.getElementById('pv1');
+      const pv2 = document.getElementById('pv2');
+      const els = {
+        drop: document.getElementById('drop'),
+        file: document.getElementById('file'),
+        radius: document.getElementById('radius'),
+        radiusVal: document.getElementById('radiusVal'),
+        cut: document.getElementById('cut'),
+        cutVal: document.getElementById('cutVal'),
+        feather: document.getElementById('feather'),
+        featherVal: document.getElementById('featherVal'),
+        save: document.getElementById('save'),
+        reset: document.getElementById('reset')
+      };
+
+      let image = null;
+      let circle = { x: 0, y: 0, r: 150 };   // in source-image pixels
+      let viewScale = 1;
+
+      /* ---------------------------------------------------------------- */
+      /* Loading                                                          */
+      /* ---------------------------------------------------------------- */
+
+      function loadFile(file) {
+        if (!file || !file.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => {
+            image = img;
+            resetCircle();
+            els.save.disabled = false;
+            render();
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function resetCircle() {
+        if (!image) return;
+        // Default: centred on the upper-middle of the frame, which is where a
+        // head sits in almost any portrait.
+        const r = Math.round(Math.min(image.width, image.height) * 0.42);
+        circle = { x: Math.round(image.width / 2), y: Math.round(image.height * 0.45), r };
+        els.radius.max = Math.round(Math.max(image.width, image.height) * 0.8);
+        els.radius.value = r;
+        syncLabels();
+      }
+
+      function syncLabels() {
+        els.radiusVal.textContent = els.radius.value;
+        els.cutVal.textContent = els.cut.value;
+        els.featherVal.textContent = els.feather.value;
+      }
+
+      /* ---------------------------------------------------------------- */
+      /* Cutout                                                           */
+      /* ---------------------------------------------------------------- */
+
+      /**
+       * Produces the square, transparent-background cutout at OUTPUT_SIZE.
+       * The circle is mapped to fill the square, so the game's own circular
+       * crop lines up with it exactly.
+       */
+      function buildCutout() {
+        const size = OUTPUT_SIZE;
+        const out = document.createElement('canvas');
+        out.width = size;
+        out.height = size;
+        const ctx = out.getContext('2d');
+
+        // Draw the circle's bounding square, scaled up to the output size.
+        const scale = size / (circle.r * 2);
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(
+          image,
+          circle.x - circle.r, circle.y - circle.r, circle.r * 2, circle.r * 2,
+          0, 0, size, size
+        );
+
+        const data = ctx.getImageData(0, 0, size, size);
+        maskToCircle(data, size, Number(els.feather.value) * scale);
+
+        const tolerance = Number(els.cut.value);
+        if (tolerance > 0) floodClearBackground(data, size, tolerance);
+
+        ctx.putImageData(data, 0, 0);
+        return out;
+      }
+
+      /** Everything outside the inscribed circle goes transparent. */
+      function maskToCircle(imageData, size, feather) {
+        const px = imageData.data;
+        const c = size / 2;
+        const r = size / 2;
+        const soft = Math.max(0, feather);
+        for (let y = 0; y < size; y += 1) {
+          for (let x = 0; x < size; x += 1) {
+            const dx = x - c + 0.5;
+            const dy = y - c + 0.5;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const i = (y * size + x) * 4 + 3;
+            if (dist >= r) px[i] = 0;
+            else if (soft > 0 && dist > r - soft) {
+              px[i] = Math.round(px[i] * (1 - (dist - (r - soft)) / soft));
+            }
+          }
+        }
+      }
+
+      /**
+       * Flood fill inward from the circle edge, clearing pixels close to the
+       * BACKDROP COLOUR sampled at that edge.
+       *
+       * Comparing each pixel against its neighbour instead would let the fill
+       * drift across a smooth gradient one small step at a time and swallow the
+       * whole face. Anchoring every comparison to one reference colour keeps it
+       * to the backdrop.
+       */
+      function floodClearBackground(imageData, size, tolerance) {
+        const px = imageData.data;
+
+        // Reference colour: the average of the opaque pixels sitting just
+        // inside the transparent ring - i.e. the backdrop, not the subject.
+        let rs = 0, gs = 0, bs = 0, n = 0;
+        for (let y = 0; y < size; y += 1) {
+          for (let x = 0; x < size; x += 1) {
+            const idx = y * size + x;
+            if (px[idx * 4 + 3] === 0) continue;
+            const touchesEdge =
+              x === 0 || y === 0 || x === size - 1 || y === size - 1 ||
+              px[(idx - 1) * 4 + 3] === 0 || px[(idx + 1) * 4 + 3] === 0 ||
+              px[(idx - size) * 4 + 3] === 0 || px[(idx + size) * 4 + 3] === 0;
+            if (!touchesEdge) continue;
+            rs += px[idx * 4]; gs += px[idx * 4 + 1]; bs += px[idx * 4 + 2]; n += 1;
+          }
+        }
+        if (!n) return;
+        const ref = [rs / n, gs / n, bs / n];
+
+        const seen = new Uint8Array(size * size);
+        const queue = [];
+        for (let idx = 0; idx < size * size; idx += 1) {
+          if (px[idx * 4 + 3] === 0) { seen[idx] = 1; queue.push(idx); }
+        }
+
+        while (queue.length) {
+          const idx = queue.pop();
+          const x = idx % size;
+          const y = (idx / size) | 0;
+          const neighbours = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+          for (const [nx, ny] of neighbours) {
+            if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+            const nIdx = ny * size + nx;
+            if (seen[nIdx]) continue;
+            const nBase = nIdx * 4;
+            const dr = px[nBase] - ref[0];
+            const dg = px[nBase + 1] - ref[1];
+            const db = px[nBase + 2] - ref[2];
+            if (Math.sqrt(dr * dr + dg * dg + db * db) <= tolerance) {
+              seen[nIdx] = 1;
+              px[nBase + 3] = 0;
+              queue.push(nIdx);
+            }
+          }
+        }
+      }
+
+      /* ---------------------------------------------------------------- */
+      /* Rendering                                                        */
+      /* ---------------------------------------------------------------- */
+
+      function render() {
+        if (!image) return;
+
+        const maxW = 620;
+        viewScale = Math.min(1, maxW / image.width);
+        view.width = Math.round(image.width * viewScale);
+        view.height = Math.round(image.height * viewScale);
+
+        vctx.clearRect(0, 0, view.width, view.height);
+        vctx.drawImage(image, 0, 0, view.width, view.height);
+
+        // Dim everything outside the circle so the crop is obvious.
+        vctx.save();
+        vctx.fillStyle = 'rgba(8, 12, 23, 0.62)';
+        vctx.beginPath();
+        vctx.rect(0, 0, view.width, view.height);
+        vctx.arc(circle.x * viewScale, circle.y * viewScale, circle.r * viewScale, 0, Math.PI * 2, true);
+        vctx.fill('evenodd');
+        vctx.restore();
+
+        vctx.strokeStyle = '#ffd166';
+        vctx.lineWidth = 2;
+        vctx.beginPath();
+        vctx.arc(circle.x * viewScale, circle.y * viewScale, circle.r * viewScale, 0, Math.PI * 2);
+        vctx.stroke();
+
+        const cutout = buildCutout();
+        for (const [canvas, size] of [[pv1, 24], [pv2, 128]]) {
+          const c = canvas.getContext('2d');
+          c.imageSmoothingEnabled = size > 32;
+          c.clearRect(0, 0, size, size);
+          c.drawImage(cutout, 0, 0, size, size);
+        }
+      }
+
+      /* ---------------------------------------------------------------- */
+      /* Interaction                                                      */
+      /* ---------------------------------------------------------------- */
+
+      els.drop.addEventListener('click', () => els.file.click());
+      els.file.addEventListener('change', (e) => loadFile(e.target.files[0]));
+      ['dragenter', 'dragover'].forEach((t) =>
+        els.drop.addEventListener(t, (e) => { e.preventDefault(); els.drop.classList.add('is-over'); })
+      );
+      ['dragleave', 'drop'].forEach((t) =>
+        els.drop.addEventListener(t, (e) => { e.preventDefault(); els.drop.classList.remove('is-over'); })
+      );
+      els.drop.addEventListener('drop', (e) => loadFile(e.dataTransfer.files[0]));
+      document.addEventListener('dragover', (e) => e.preventDefault());
+      document.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer && e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+      });
+
+      let dragging = false;
+      view.addEventListener('pointerdown', (e) => {
+        if (!image) return;
+        dragging = true;
+        view.setPointerCapture(e.pointerId);
+        moveCircle(e);
+      });
+      view.addEventListener('pointermove', (e) => { if (dragging) moveCircle(e); });
+      view.addEventListener('pointerup', () => { dragging = false; });
+      view.addEventListener('wheel', (e) => {
+        if (!image) return;
+        e.preventDefault();
+        circle.r = Math.max(20, Math.min(Number(els.radius.max), circle.r + (e.deltaY < 0 ? 6 : -6)));
+        els.radius.value = Math.round(circle.r);
+        syncLabels();
+        render();
+      }, { passive: false });
+
+      function moveCircle(e) {
+        const rect = view.getBoundingClientRect();
+        circle.x = Math.round((e.clientX - rect.left) * (view.width / rect.width) / viewScale);
+        circle.y = Math.round((e.clientY - rect.top) * (view.height / rect.height) / viewScale);
+        render();
+      }
+
+      for (const id of ['radius', 'cut', 'feather']) {
+        els[id].addEventListener('input', () => {
+          if (id === 'radius') circle.r = Number(els.radius.value);
+          syncLabels();
+          render();
+        });
+      }
+
+      els.reset.addEventListener('click', () => { resetCircle(); render(); });
+
+      els.save.addEventListener('click', () => {
+        if (!image) return;
+        buildCutout().toBlob((blob) => {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'face.png';
+          a.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }, 'image/png');
+      });
+
+      syncLabels();
+    </script>
+  </body>
+</html>

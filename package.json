@@ -1,0 +1,17 @@
+{
+  "name": "flappy-fest",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Arcade Flappy-style stall game with a 3-attempt session system and a persistent leaderboard.",
+  "type": "module",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "audio": "node tools/get-audio.mjs"
+  },
+  "dependencies": {}
+}

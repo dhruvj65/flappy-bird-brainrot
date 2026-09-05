@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0d1424" />
+    <title>Flappy Fest - Leaderboard</title>
+    <link rel="icon" href="assets/character/modi.png" />
+    <style>
+      /* Standalone page: styled to match the game but with none of its
+         fixed-aspect stage, so it can fill a second screen at the stall. */
+      :root {
+        --bg: #080c17;
+        --bg-glow: #16233f;
+        --ink: #f7f9ff;
+        --ink-dim: #a9b6d4;
+        --accent: #ffd166;
+        --accent-cool: #4cc9f0;
+        --good: #06d6a0;
+        --panel: rgba(9, 15, 30, 0.82);
+        --stroke: rgba(255, 255, 255, 0.12);
+        --font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body { margin: 0; min-height: 100%; }
+
+      body {
+        background: radial-gradient(120% 80% at 50% 0%, var(--bg-glow) 0%, var(--bg) 60%);
+        color: var(--ink);
+        font-family: var(--font);
+        -webkit-font-smoothing: antialiased;
+        padding: clamp(16px, 4vw, 40px);
+      }
+
+      .wrap { max-width: 900px; margin: 0 auto; }
+
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: clamp(16px, 3vh, 28px);
+      }
+
+      .eyebrow {
+        margin: 0 0 4px;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.32em;
+        text-transform: uppercase;
+        color: var(--accent-cool);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(30px, 6vw, 52px);
+        font-weight: 900;
+        letter-spacing: -0.03em;
+        line-height: 1;
+      }
+      h1 span { color: var(--accent); }
+
+      .meta {
+        font-size: clamp(12px, 2vw, 15px);
+        color: var(--ink-dim);
+        text-align: right;
+      }
+      .meta strong { color: var(--ink); font-size: 1.4em; }
+
+      .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+      .btn {
+        display: inline-block;
+        padding: 12px 20px;
+        border-radius: 12px;
+        border: 1px solid var(--stroke);
+        background: transparent;
+        color: var(--ink-dim);
+        font: inherit;
+        font-weight: 700;
+        font-size: 14px;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .btn:hover { color: var(--ink); border-color: rgba(255, 255, 255, 0.32); }
+      .btn--primary {
+        background: linear-gradient(160deg, var(--accent) 0%, #f0a92f 100%);
+        color: #21160a;
+        border: none;
+        box-shadow: 0 4px 0 #b57d1c;
+      }
+
+      /* ---------------------------------------------------------------- */
+
+      .board {
+        background: var(--panel);
+        border: 1px solid var(--stroke);
+        border-radius: 16px;
+        overflow: hidden;
+      }
+
+      table { width: 100%; border-collapse: collapse; }
+
+      th {
+        text-align: left;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--ink-dim);
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--stroke);
+        white-space: nowrap;
+      }
+
+      td {
+        padding: 12px 16px;
+        font-size: clamp(13px, 2vw, 16px);
+        font-weight: 600;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      tbody tr:last-child td { border-bottom: none; }
+      tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+
+      .rank { font-weight: 900; color: var(--ink-dim); width: 1%; white-space: nowrap; }
+      tr[data-podium="1"] .rank { color: #ffd700; }
+      tr[data-podium="2"] .rank { color: #cfd8e3; }
+      tr[data-podium="3"] .rank { color: #d38b52; }
+      tr[data-podium] .name { color: var(--ink); }
+
+      .name { max-width: 1px; width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      .score { font-weight: 900; color: var(--accent); font-size: 1.15em; text-align: right; width: 1%; white-space: nowrap; }
+
+      .tries { color: var(--ink-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+      .tries b { color: var(--good); font-weight: 800; }
+
+      .when { color: var(--ink-dim); font-size: 0.88em; text-align: right; white-space: nowrap; }
+
+      /* Narrow screens: the per-attempt breakdown is the first thing to go. */
+      @media (max-width: 620px) {
+        .tries, th.tries-h { display: none; }
+      }
+      @media (max-width: 460px) {
+        .when, th.when-h { display: none; }
+      }
+
+      .empty, .error {
+        padding: clamp(30px, 8vh, 60px) 20px;
+        text-align: center;
+        color: var(--ink-dim);
+      }
+      .empty h2 { margin: 0 0 8px; color: var(--ink); font-size: 20px; }
+      .error { color: #ffd9a0; }
+
+      footer {
+        margin-top: 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        font-size: 12px;
+        color: var(--ink-dim);
+      }
+
+      .live {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .dot {
+        width: 8px; height: 8px; border-radius: 50%;
+        background: var(--good);
+        animation: pulse 2s ease-in-out infinite;
+      }
+      .dot[data-state="stale"] { background: #ef476f; animation: none; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+      @media (prefers-reduced-motion: reduce) {
+        * { animation-duration: 0.001ms !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div>
+          <p class="eyebrow">Tech Fest Arcade</p>
+          <h1>Flappy <span>Fest</span> Leaderboard</h1>
+        </div>
+        <div class="meta">
+          <div><strong id="total">0</strong> players</div>
+          <div class="actions" style="margin-top:10px">
+            <a class="btn btn--primary" href="/">Back to game</a>
+            <button class="btn" id="refresh" type="button">Refresh</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="board">
+        <table>
+          <thead>
+            <tr>
+              <th class="rank">#</th>
+              <th>Player</th>
+              <th class="tries-h tries">Attempts</th>
+              <th class="when-h when">Played</th>
+              <th style="text-align:right">Best</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div id="message"></div>
+      </div>
+
+      <footer>
+        <span class="live"><span class="dot" id="dot"></span><span id="status">Live - refreshes every 10s</span></span>
+        <span>Best of three attempts per player</span>
+      </footer>
+    </div>
+
+    <script type="module">
+      const REFRESH_MS = 10000;
+      const LIMIT = 200;
+
+      const els = {
+        rows: document.getElementById('rows'),
+        total: document.getElementById('total'),
+        message: document.getElementById('message'),
+        status: document.getElementById('status'),
+        dot: document.getElementById('dot'),
+        refresh: document.getElementById('refresh')
+      };
+
+      /** "just now", "4 min ago", "2 h ago", else a date. */
+      function whenText(ms) {
+        if (!Number.isFinite(ms)) return '';
+        const age = Date.now() - ms;
+        if (age < 60_000) return 'just now';
+        if (age < 3_600_000) return Math.floor(age / 60_000) + ' min ago';
+        if (age < 86_400_000) return Math.floor(age / 3_600_000) + ' h ago';
+        return new Date(ms).toLocaleDateString();
+      }
+
+      function element(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        // textContent throughout: names are player-supplied and must never be
+        // treated as markup.
+        if (text != null) node.textContent = text;
+        return node;
+      }
+
+      function render(entries, total) {
+        els.total.textContent = String(total);
+        els.rows.replaceChildren();
+        els.message.replaceChildren();
+
+        if (!entries.length) {
+          const box = element('div', 'empty');
+          box.appendChild(element('h2', null, 'No scores yet'));
+          box.appendChild(element('p', null, 'The first player to finish three attempts lands here.'));
+          els.message.appendChild(box);
+          return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        for (const entry of entries) {
+          const row = document.createElement('tr');
+          if (entry.rank <= 3) row.dataset.podium = String(entry.rank);
+
+          row.appendChild(element('td', 'rank', '#' + entry.rank));
+          row.appendChild(element('td', 'name', entry.name));
+
+          // Per-attempt breakdown with the counted one marked.
+          const tries = element('td', 'tries');
+          const scores = Array.isArray(entry.attempts) ? entry.attempts : [];
+          if (scores.length) {
+            const bestIndex = scores.indexOf(Math.max(...scores));
+            scores.forEach((value, i) => {
+              if (i > 0) tries.appendChild(document.createTextNode('  /  '));
+              if (i === bestIndex) tries.appendChild(element('b', null, String(value)));
+              else tries.appendChild(document.createTextNode(String(value)));
+            });
+          } else {
+            tries.textContent = '-';
+          }
+          row.appendChild(tries);
+
+          row.appendChild(element('td', 'when', whenText(entry.createdAt)));
+          row.appendChild(element('td', 'score', String(entry.score)));
+          fragment.appendChild(row);
+        }
+        els.rows.appendChild(fragment);
+      }
+
+      function showError(reason) {
+        els.dot.dataset.state = 'stale';
+        els.status.textContent = 'Cannot reach the leaderboard - ' + reason;
+        if (!els.rows.children.length) {
+          els.message.replaceChildren(
+            element('div', 'error', 'The game server is not responding. Is it still running?')
+          );
+        }
+      }
+
+      let timer = 0;
+
+      async function load() {
+        try {
+          const res = await fetch('/api/leaderboard?limit=' + LIMIT, { cache: 'no-store' });
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          const data = await res.json();
+          if (!data || data.ok === false) throw new Error(data?.error || 'bad response');
+
+          render(data.entries || [], data.total || 0);
+          delete els.dot.dataset.state;
+          els.status.textContent =
+            'Live - updated ' + new Date().toLocaleTimeString() + ', refreshes every 10s';
+        } catch (err) {
+          showError(err.message);
+        }
+      }
+
+      els.refresh.addEventListener('click', load);
+
+      // Pause polling while the tab is hidden so a screen left open overnight
+      // is not hammering the server.
+      function schedule() {
+        clearInterval(timer);
+        if (!document.hidden) timer = setInterval(load, REFRESH_MS);
+      }
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) load();
+        schedule();
+      });
+
+      load();
+      schedule();
+    </script>
+  </body>
+</html>

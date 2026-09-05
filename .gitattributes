@@ -1,0 +1,16 @@
+# Normalise line endings so the repo is not churned by Windows checkouts.
+* text=auto eol=lf
+
+# Windows-only helper stays CRLF if one is ever added.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Never touch binary assets.
+*.png binary
+*.jpg binary
+*.svg text
+*.mp3 binary
+*.m4a binary
+*.ogg binary
+*.wav binary
+*.exe binary

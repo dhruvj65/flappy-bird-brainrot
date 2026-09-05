@@ -1,0 +1,1146 @@
+/* --------------------------------------------------------------------------
+   Flappy Fest - arcade styling for a tech-fest stall.
+
+   Layout: a fixed 16:9 landscape stage. Everything inside is sized in
+   container-query units so the entire interface scales with the stage exactly
+   like the canvas does - the game looks identical on a laptop, an external
+   monitor and a projector. A vh-based value precedes each cq value as a
+   fallback for browsers without container query units.
+
+   Design rules: readable from two metres away, one obvious action per screen,
+   nothing small enough to miss with a thumb.
+   -------------------------------------------------------------------------- */
+
+:root {
+  --bg: #080c17;
+  --bg-glow: #16233f;
+  --ink: #f7f9ff;
+  --ink-dim: #a9b6d4;
+  --accent: #ffd166;
+  --accent-hot: #ef476f;
+  --accent-cool: #4cc9f0;
+  --good: #06d6a0;
+  --panel: rgba(9, 15, 30, 0.82);
+  --stroke: rgba(255, 255, 255, 0.12);
+  --radius: 18px;
+  --font: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: radial-gradient(120% 90% at 50% 0%, var(--bg-glow) 0%, var(--bg) 62%);
+  color: var(--ink);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.app {
+  --pad: clamp(6px, 1.6vh, 20px);
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: var(--pad);
+}
+
+/* --------------------------------------------------------------------------
+   Stage - fixed 16:9, the sizing container for everything inside
+   -------------------------------------------------------------------------- */
+
+.stage {
+  position: relative;
+  aspect-ratio: 288 / 512;
+  /* Fit the largest portrait box inside the padded viewport. The width is
+     computed from both axes and the height follows from aspect-ratio - setting
+     an explicit height instead would override the ratio. */
+  width: min(calc(100vw - 2 * var(--pad)), calc((100vh - 2 * var(--pad)) * 288 / 512));
+  width: min(calc(100vw - 2 * var(--pad)), calc((100dvh - 2 * var(--pad)) * 288 / 512));
+  height: auto;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow), 0 0 0 1px var(--stroke);
+  background: #101a2e;
+  isolation: isolate;
+  container-type: size;
+  container-name: stage;
+}
+
+.stage__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  /* The backing store is an integer multiple of the 288x512 field; nearest
+     neighbour upscaling is what keeps the sprite pixels square. */
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* --------------------------------------------------------------------------
+   HUD - attempt chip left, score centred
+   -------------------------------------------------------------------------- */
+
+.hud {
+  position: absolute;
+  /* Full height: the score sits at the top and the attempt chip is pushed to
+     the bottom, keeping it out of the character's flight path. */
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2.2cqh 2.2cqw;
+  z-index: 25;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.stage[data-screen="playing"] .hud,
+.stage[data-screen="ready"] .hud {
+  opacity: 1;
+}
+
+.hud__score {
+  font-size: clamp(34px, 7vh, 64px);
+  font-size: clamp(34px, 16cqw, 88px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  text-align: center;
+  color: #ffffff;
+  /* Hard offset shadows instead of a blur: an arcade score has to stay legible
+     against clouds, pipes and sky without looking soft. */
+  text-shadow:
+    -2px 0 0 #3b2716, 2px 0 0 #3b2716, 0 -2px 0 #3b2716, 0 2px 0 #3b2716,
+    -2px -2px 0 #3b2716, 2px -2px 0 #3b2716, -2px 2px 0 #3b2716, 2px 2px 0 #3b2716,
+    0 4px 0 rgba(0, 0, 0, 0.28);
+}
+
+.hud__score.is-bumped {
+  animation: score-pop 0.24s ease-out;
+}
+
+@keyframes score-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.28); color: var(--accent); }
+  100% { transform: scale(1); }
+}
+
+.hud__attempt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 1.1cqh 1.6cqw;
+  border-radius: 999px;
+  background: rgba(8, 12, 23, 0.55);
+  border: 1px solid var(--stroke);
+  backdrop-filter: blur(6px);
+}
+
+.hud__attempt-label {
+  font-size: clamp(10px, 1.9vh, 15px);
+  font-size: clamp(10px, 2.9cqh, 16px);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+.hud__attempt {
+  margin-top: auto;
+}
+
+/* Attempt pips ------------------------------------------------------------ */
+
+.pips {
+  display: flex;
+  gap: 6px;
+}
+
+.pip {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.pip[data-state="used"] {
+  background: var(--accent-hot);
+  border-color: var(--accent-hot);
+}
+
+.pip[data-state="current"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.25);
+  box-shadow: 0 0 12px rgba(255, 209, 102, 0.7);
+}
+
+.pips--large {
+  gap: 10px;
+}
+
+.pips--large .pip {
+  width: 16px;
+  height: 16px;
+}
+
+/* --------------------------------------------------------------------------
+   Sound toggle
+   -------------------------------------------------------------------------- */
+
+.sound-toggle {
+  position: absolute;
+  top: 1.6cqh;
+  right: 1.6cqw;
+  z-index: 30;
+  padding: 0.8cqh 1.6cqw;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: rgba(8, 12, 23, 0.62);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: clamp(9px, 2.2cqh, 12px);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.sound-toggle:hover {
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* --------------------------------------------------------------------------
+   Screens
+   -------------------------------------------------------------------------- */
+
+.screen {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  /* The extra top padding reserves the strip the sound toggle sits in, so no
+     panel can ever slide underneath it. */
+  padding: 7.5cqh 4cqw 5.5cqh;
+  background: linear-gradient(180deg, rgba(6, 10, 20, 0.88) 0%, rgba(6, 10, 20, 0.94) 100%);
+  backdrop-filter: blur(3px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.stage[data-screen="attract"] .screen[data-screen="attract"],
+.stage[data-screen="select"] .screen[data-screen="select"],
+.stage[data-screen="ready"] .screen[data-screen="ready"],
+.stage[data-screen="attemptOver"] .screen[data-screen="attemptOver"],
+.stage[data-screen="submitting"] .screen[data-screen="submitting"],
+.stage[data-screen="result"] .screen[data-screen="result"] {
+  display: flex;
+  animation: screen-in 0.22s ease-out;
+}
+
+/* The ready screen is a call to action over live gameplay, not a wall. */
+.screen--ready {
+  background: linear-gradient(180deg, rgba(6, 10, 20, 0.3) 0%, rgba(6, 10, 20, 0.5) 100%);
+  backdrop-filter: none;
+}
+
+@keyframes screen-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Two column layout used by attract + result ------------------------------ */
+
+.split {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  /* Portrait: the main block sits on top and the board takes the remaining
+     height, scrolling inside it rather than overflowing the stage. */
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 2cqh;
+}
+
+.split__main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  justify-content: center;
+  gap: 1.1cqh;
+  min-width: 0;
+}
+
+.split__main--result {
+  align-items: center;
+  text-align: center;
+  gap: 2.4cqh;
+}
+
+.split__side {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.2cqh;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Single column, centred - ready / attempt over / submitting --------------- */
+
+.centre {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.8cqh;
+  text-align: center;
+  max-width: 92cqw;
+}
+
+.centre--wide {
+  max-width: 96cqw;
+  width: 100%;
+}
+
+.panel-title {
+  margin: 0;
+  font-size: clamp(10px, 2.4cqh, 19px);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+/* --------------------------------------------------------------------------
+   Attract
+   -------------------------------------------------------------------------- */
+
+.eyebrow {
+  margin: 0;
+  font-size: clamp(9px, 2.3cqh, 18px);
+  font-weight: 700;
+  letter-spacing: 0.32em;
+  color: var(--accent-cool);
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 0.86;
+  /* Portrait: the container WIDTH constrains display type, not the height. */
+  font-size: clamp(30px, 11vw, 64px);
+  font-size: clamp(30px, 15cqw, 76px);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+}
+
+.title__word--accent {
+  color: var(--accent);
+  text-shadow: 0 0 34px rgba(255, 209, 102, 0.45);
+}
+
+.tagline {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: clamp(12px, 2.9cqh, 24px);
+  font-style: italic;
+}
+
+.name-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9cqh;
+  margin-top: 0.6cqh;
+}
+
+.name-form__label {
+  font-size: clamp(9px, 2.2cqh, 13px);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+}
+
+/* Input and START sit side by side - one row, one glance, one action. */
+.name-form__row {
+  display: grid;
+  gap: 1.2cqh;
+}
+
+.name-form__input {
+  width: 100%;
+  padding: 1.9cqh 1.6cqw;
+  border-radius: 14px;
+  border: 2px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  font: inherit;
+  font-size: clamp(15px, 3.6cqh, 32px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+  min-width: 0;
+}
+
+.name-form__input::placeholder {
+  color: rgba(169, 182, 212, 0.5);
+  letter-spacing: 0.1em;
+}
+
+.name-form__input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(255, 209, 102, 0.08);
+}
+
+.how-to {
+  margin: 0.4cqh 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.3em 1.1em;
+  font-size: clamp(10px, 3.4cqw, 15px);
+  color: var(--ink-dim);
+}
+
+.how-to li {
+  position: relative;
+  padding-left: 1.1em;
+}
+
+.how-to li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-cool);
+}
+
+.how-to b {
+  color: var(--ink);
+}
+
+/* Mini leaderboard on the attract screen ---------------------------------- */
+
+.mini-board {
+  /* Fill the column so the board reads as a real panel rather than a footnote. */
+  flex: 1;
+  padding: 2.2cqh 1.6cqw;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--stroke);
+  display: flex;
+  flex-direction: column;
+  gap: 1.4cqh;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.mini-board__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1cqw;
+}
+
+.mini-board__all {
+  flex: none;
+  color: var(--accent);
+  font-size: clamp(9px, 2.4cqw, 13px);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 0.4cqh 0.8cqw;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 209, 102, 0.35);
+}
+
+.mini-board__all:hover {
+  background: rgba(255, 209, 102, 0.14);
+}
+
+.mini-board__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9cqh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+}
+
+.mini-board__row {
+  display: grid;
+  grid-template-columns: 2.2em 1fr auto;
+  gap: 0.7em;
+  align-items: center;
+  font-size: clamp(12px, 2.8cqh, 22px);
+  font-weight: 600;
+}
+
+.mini-board__row span:first-child {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.mini-board__row span:nth-child(2) {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-board__row span:last-child {
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.mini-board__empty {
+  font-size: clamp(11px, 2.6cqh, 15px);
+  color: var(--ink-dim);
+}
+
+/* --------------------------------------------------------------------------
+   Character select
+   -------------------------------------------------------------------------- */
+
+.select__player {
+  margin: 0;
+  font-size: clamp(13px, 4cqw, 18px);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--accent-cool);
+  text-transform: uppercase;
+}
+
+.roster {
+  width: 100%;
+  display: grid;
+  /* A minimum share per card forces a wrap instead of squeezing everything
+     onto one unreadable row once the roster grows. */
+  grid-template-columns: repeat(auto-fit, minmax(26%, 1fr));
+  gap: 2cqw;
+  margin: 1cqh 0;
+  align-items: stretch;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.roster::-webkit-scrollbar { display: none; }
+
+/* Many characters: trade the per-card blurb for rows that fit on screen. */
+.roster--compact .roster__art { height: 10cqh; min-height: 44px; }
+
+/* Past six, narrower columns pack them into fewer rows - 7 becomes 4+3
+   rather than a lopsided 3+3+1. */
+.roster--wide { grid-template-columns: repeat(auto-fit, minmax(21%, 1fr)); }
+.roster--wide .roster__art { height: 8.5cqh; min-height: 38px; }
+.roster--wide .roster__name { font-size: clamp(9px, 2.5cqw, 13px); }
+.roster--compact .roster__tagline { display: none; }
+.roster--compact .roster__card { padding: 1.1cqh 0.8cqw; gap: 0.5cqh; }
+.roster--compact .roster__name { font-size: clamp(10px, 3cqw, 15px); }
+
+/* Big, obviously-tappable cards - a stall queue should not have to aim. */
+.roster__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8cqh;
+  padding: 1.6cqh 1.2cqw;
+  border-radius: 16px;
+  min-width: 0;
+  overflow: hidden;
+  border: 2px solid var(--stroke);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease, background 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.roster__card:hover:not(:disabled) {
+  border-color: rgba(255, 209, 102, 0.6);
+  background: rgba(255, 209, 102, 0.08);
+}
+
+.roster__card:active:not(:disabled) {
+  transform: translateY(2px) scale(0.99);
+}
+
+.roster__card:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.roster__art {
+  position: relative;
+  width: 100%;
+  height: 15cqh;
+  min-height: 60px;
+  max-height: 130px;
+  overflow: hidden;
+}
+
+/* Absolutely positioned so the image box is exactly the art box - a percentage
+   height on a flow/grid child resolves against an auto-sized row instead and
+   falls back to the image's intrinsic height, which overflows and crops. */
+.roster__art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.45));
+}
+
+.roster__art--missing {
+  display: grid;
+  place-items: center;
+}
+
+/* Shown when a character's artwork has not been installed yet. */
+.roster__art--missing {
+  border-radius: 12px;
+  border: 2px dashed var(--stroke);
+  color: var(--ink-dim);
+  font-size: clamp(9px, 2.4cqw, 12px);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 0 6px;
+}
+
+.roster__name {
+  font-size: clamp(12px, 3.6cqw, 19px);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.roster__tagline {
+  font-size: clamp(9px, 2.5cqw, 13px);
+  color: var(--ink-dim);
+  text-align: center;
+  font-style: italic;
+  line-height: 1.2;
+}
+
+.select__hint {
+  margin: 0;
+  font-size: clamp(10px, 2.6cqw, 14px);
+  color: var(--ink-dim);
+}
+
+/* --------------------------------------------------------------------------
+   Ready
+   -------------------------------------------------------------------------- */
+
+.ready__player {
+  margin: 0;
+  font-size: clamp(13px, 3cqh, 20px);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--accent-cool);
+  text-transform: uppercase;
+}
+
+.ready__attempt {
+  margin: 0;
+  font-size: clamp(24px, 11cqw, 56px);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.ready__pulse {
+  padding: 2.4cqh 4cqw;
+  border-radius: 999px;
+  border: 3px dashed rgba(255, 209, 102, 0.55);
+  animation: pulse 1.15s ease-in-out infinite;
+}
+
+.ready__tap {
+  font-size: clamp(18px, 9cqw, 40px);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.05); opacity: 1; }
+}
+
+.ready__hint {
+  margin: 0;
+  font-size: clamp(11px, 2.6cqh, 15px);
+  color: var(--ink-dim);
+}
+
+/* --------------------------------------------------------------------------
+   Attempt over
+   -------------------------------------------------------------------------- */
+
+.over__banner {
+  margin: 0;
+  font-size: clamp(22px, 11cqw, 52px);
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  color: var(--accent-hot);
+  text-shadow: 0 0 30px rgba(239, 71, 111, 0.4);
+}
+
+/* Three stats across the width - the landscape equivalent of a stacked card. */
+.score-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.4cqh 2cqw;
+}
+
+/* The remaining-attempts tile spans the full width under the two scores. */
+.stat--pips {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  justify-content: center;
+  gap: 2cqw;
+}
+
+.stat {
+  padding: 2cqh 1.4cqw;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--stroke);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4cqh;
+}
+
+.stat--hero {
+  border-color: rgba(255, 209, 102, 0.35);
+}
+
+.stat__label {
+  font-size: clamp(9px, 2.2cqh, 13px);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  text-align: center;
+}
+
+.stat__value {
+  font-size: clamp(32px, 15cqw, 72px);
+  font-weight: 900;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.stat__value--sm {
+  font-size: clamp(24px, 12cqw, 56px);
+  color: var(--ink);
+}
+
+.stat--pips {
+  gap: 1.4cqh;
+}
+
+.action-row {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1cqh;
+}
+
+/* --------------------------------------------------------------------------
+   Submitting
+   -------------------------------------------------------------------------- */
+
+.spinner {
+  width: 9cqh;
+  height: 9cqh;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 50%;
+  border: 5px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--accent);
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.submitting__text {
+  margin: 0;
+  font-size: clamp(13px, 3cqh, 19px);
+  color: var(--ink-dim);
+  letter-spacing: 0.06em;
+}
+
+.submitting__score {
+  margin: 0;
+  font-size: clamp(38px, 19cqw, 96px);
+  font-weight: 900;
+  color: var(--accent);
+  line-height: 1;
+}
+
+/* --------------------------------------------------------------------------
+   Result
+   -------------------------------------------------------------------------- */
+
+.result__crown {
+  font-size: clamp(9px, 2.3cqh, 13px);
+  font-weight: 800;
+  letter-spacing: 0.3em;
+  color: var(--accent-cool);
+  text-transform: uppercase;
+}
+
+.rank-badge {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 1cqh 3cqw;
+  border-radius: 20px;
+  background: linear-gradient(140deg, rgba(255, 209, 102, 0.2), rgba(239, 71, 111, 0.16));
+  border: 2px solid rgba(255, 209, 102, 0.5);
+  animation: badge-in 0.5s cubic-bezier(0.18, 1.3, 0.4, 1);
+  box-shadow: 0 0 40px rgba(255, 209, 102, 0.25);
+}
+
+.rank-badge[data-podium="1"] { border-color: #ffd700; box-shadow: 0 0 50px rgba(255, 215, 0, 0.45); }
+.rank-badge[data-podium="2"] { border-color: #cfd8e3; }
+.rank-badge[data-podium="3"] { border-color: #d38b52; }
+
+@keyframes badge-in {
+  from { transform: scale(0.5) rotate(-6deg); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.rank-badge__hash {
+  font-size: clamp(18px, 7cqw, 40px);
+  font-weight: 800;
+  color: var(--ink-dim);
+}
+
+.rank-badge__value {
+  font-size: clamp(44px, 24cqw, 132px);
+  font-weight: 900;
+  line-height: 1;
+  color: var(--accent);
+}
+
+.rank-caption {
+  margin: 0;
+  font-size: clamp(10px, 2.4cqh, 14px);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.result__best {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7em;
+  padding: 1cqh 2cqw;
+  border-radius: 14px;
+  background: var(--panel);
+  border: 1px solid var(--stroke);
+}
+
+.result__best-label {
+  font-size: clamp(9px, 2.2cqh, 13px);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.result__best-value {
+  font-size: clamp(22px, 11cqw, 52px);
+  font-weight: 900;
+  color: var(--good);
+  line-height: 1;
+}
+
+/* Attempt strip ----------------------------------------------------------- */
+
+.attempt-strip {
+  display: flex;
+  gap: 0.8cqw;
+}
+
+.attempt-chip {
+  min-width: 6.4cqw;
+  padding: 1cqh 1.1cqw;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--stroke);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.attempt-chip__label {
+  font-size: clamp(8px, 1.9cqh, 14px);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+}
+
+.attempt-chip__value {
+  font-size: clamp(16px, 7cqw, 32px);
+  font-weight: 900;
+  line-height: 1.1;
+}
+
+.attempt-chip[data-best="true"] {
+  background: rgba(6, 214, 160, 0.14);
+  border-color: rgba(6, 214, 160, 0.5);
+}
+
+.attempt-chip[data-best="true"] .attempt-chip__value {
+  color: var(--good);
+}
+
+/* Leaderboard ------------------------------------------------------------- */
+
+.board-status {
+  margin: 0;
+  padding: 1cqh 1.2cqw;
+  border-radius: 10px;
+  font-size: clamp(10px, 2.2cqh, 13px);
+  font-weight: 600;
+  color: #ffd9a0;
+  background: rgba(255, 209, 102, 0.12);
+  border: 1px solid rgba(255, 209, 102, 0.3);
+}
+
+.mini-board__list,
+.board {
+  scrollbar-width: none;
+}
+
+.mini-board__list::-webkit-scrollbar,
+.board::-webkit-scrollbar {
+  display: none;
+}
+
+.board {
+  margin: 0;
+  padding: 1cqh 0.8cqw;
+  list-style: none;
+  border-radius: 16px;
+  background: var(--panel);
+  border: 1px solid var(--stroke);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4cqh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  flex: 1;
+  min-height: 0;
+}
+
+.board__row {
+  display: grid;
+  grid-template-columns: 3em 1fr auto;
+  gap: 0.7em;
+  align-items: center;
+  padding: 0.9cqh 0.8cqw;
+  border-radius: 10px;
+  font-size: clamp(11px, 2.6cqh, 21px);
+  font-weight: 700;
+}
+
+.board__rank {
+  color: var(--ink-dim);
+  font-weight: 900;
+}
+
+.board__name {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board__score {
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.board__row[data-podium="1"] .board__rank { color: #ffd700; }
+.board__row[data-podium="2"] .board__rank { color: #cfd8e3; }
+.board__row[data-podium="3"] .board__rank { color: #d38b52; }
+
+.board__row[data-you="true"] {
+  background: linear-gradient(90deg, rgba(6, 214, 160, 0.22), rgba(6, 214, 160, 0.05));
+  border: 1px solid rgba(6, 214, 160, 0.55);
+  animation: you-glow 1.6s ease-in-out 3;
+}
+
+.board__row[data-you="true"] .board__name::after {
+  content: " YOU";
+  font-size: 0.7em;
+  letter-spacing: 0.16em;
+  color: var(--good);
+}
+
+@keyframes you-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(6, 214, 160, 0); }
+  50% { box-shadow: 0 0 22px rgba(6, 214, 160, 0.45); }
+}
+
+.board__empty {
+  padding: 2cqh;
+  text-align: center;
+  color: var(--ink-dim);
+  font-size: clamp(11px, 2.6cqh, 15px);
+}
+
+/* --------------------------------------------------------------------------
+   Buttons
+   -------------------------------------------------------------------------- */
+
+.btn {
+  width: 100%;
+  padding: 1.9cqh 2cqw;
+  border: none;
+  border-radius: 14px;
+  font: inherit;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: transform 0.12s ease, filter 0.12s ease;
+  touch-action: manipulation;
+  white-space: nowrap;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(2px) scale(0.99);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.btn--primary {
+  background: linear-gradient(160deg, var(--accent) 0%, #f0a92f 100%);
+  color: #21160a;
+  box-shadow: 0 6px 0 #b57d1c, 0 12px 30px rgba(255, 209, 102, 0.28);
+}
+
+.btn--primary:active:not(:disabled) {
+  box-shadow: 0 3px 0 #b57d1c, 0 8px 20px rgba(255, 209, 102, 0.22);
+}
+
+.btn--jumbo {
+  padding: 2.2cqh 2.6cqw;
+  font-size: clamp(14px, 3.6cqh, 32px);
+}
+
+/* START sits under the name field in portrait and spans the full width. */
+.name-form__row .btn--jumbo {
+  width: 100%;
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--ink-dim);
+  border: 1px solid var(--stroke);
+  font-size: clamp(10px, 2.3cqh, 14px);
+  font-weight: 700;
+  padding: 1.2cqh 1.4cqw;
+}
+
+.btn--ghost:hover {
+  color: var(--ink);
+}
+
+.btn--ghost[hidden] {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   Toast
+   -------------------------------------------------------------------------- */
+
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 3cqh;
+  transform: translateX(-50%);
+  z-index: 40;
+  padding: 1.2cqh 2cqw;
+  border-radius: 999px;
+  background: rgba(8, 12, 23, 0.92);
+  border: 1px solid var(--stroke);
+  color: var(--ink);
+  font-size: clamp(11px, 2.4cqh, 15px);
+  font-weight: 600;
+  max-width: 80cqw;
+  text-align: center;
+  animation: screen-in 0.2s ease-out;
+}
+
+.toast[hidden] {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------
+   Note: there is deliberately no portrait fallback. The stage is always 16:9
+   whatever the viewport shape, so the two-column screens always fit; stacking
+   them would only make content overflow a short stage.
+   -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
