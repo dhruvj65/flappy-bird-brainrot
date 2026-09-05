@@ -18,11 +18,16 @@ const FIXED_STEP = 1 / 120;
 const MAX_STEPS_PER_FRAME = 8;
 
 export class Engine {
-  constructor({ world, renderer, onEvents, onFrame }) {
+  constructor({ world, renderer, onEvents, onFrame, onStep }) {
     this.world = world;
     this.renderer = renderer;
     this.onEvents = onEvents || (() => {});
     this.onFrame = onFrame || (() => {});
+    /* Called once per FIXED step, right after the world advances. Anything that
+       must stay in lockstep with the simulation - the Challenge Mode ghost -
+       hangs off this rather than off the frame, so a 30fps laptop and a 144Hz
+       monitor advance it identically. */
+    this.onStep = onStep || (() => {});
 
     this.frameHandle = 0;
     this.running = false;
@@ -70,6 +75,7 @@ export class Engine {
     while (this.accumulator >= FIXED_STEP && steps < MAX_STEPS_PER_FRAME) {
       const events = this.world.update(FIXED_STEP);
       if (events.length) this.onEvents(events);
+      this.onStep(FIXED_STEP);
       this.accumulator -= FIXED_STEP;
       steps += 1;
     }

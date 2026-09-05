@@ -8,6 +8,17 @@
  * Modes: 'idle' -> 'running' -> 'dying' -> 'dead'
  * Collision is only tested in 'running', which is what makes a game over a
  * single event no matter how many frames the bird spends inside a pipe.
+ *
+ * DETERMINISM. Given the same seed and the same flaps at the same step
+ * indices this produces a bit-identical run, which is what Challenge Mode's
+ * ghost replay is built on. Two properties must therefore hold:
+ *
+ *   1. the only entropy is this.rand (seeded) - never Math.random()
+ *   2. this.steps counts fixed steps, and a flap is identified by the step
+ *      count when it lands, never by wall-clock time
+ *
+ * Both worlds in a challenge run the same seed, so their pipe layouts are
+ * identical and the renderer only ever has to draw one set.
  */
 
 import { VIEW, PHYSICS, PIPES } from '../config.js';
@@ -22,7 +33,8 @@ export const WORLD_EVENT = Object.freeze({
 const FLOOR_Y = VIEW.height - VIEW.groundHeight;
 
 export class World {
-  constructor() {
+  constructor(seed = 1) {
+    this.seed = seed >>> 0;
     this.bird = { x: PHYSICS.birdX, y: 0, vy: 0, rotation: 0, flapTimer: 0 };
 
     // Fixed size pipe pool - recycled forever, never reallocated.
@@ -37,6 +49,11 @@ export class World {
 
   reset() {
     this.mode = 'idle';
+    /* Fixed steps elapsed since start(). This is the replay clock: it advances
+       only inside update(), so a dropped frame or a slow machine cannot shift
+       it out of step with a recording. */
+    this.steps = 0;
+    this.rand = mulberry32(this.seed);
     this.score = 0;
     this.distance = 0;
     this.elapsed = 0;
@@ -52,8 +69,15 @@ export class World {
     this.events.length = 0;
   }
 
-  /** Begins an attempt from a clean state. */
-  start() {
+  /**
+   * Begins an attempt from a clean state.
+   *
+   * Pass a seed to reproduce a previous run's pipe layout exactly; omit it and
+   * a fresh random layout is generated. The seed is stored so a recording can
+   * report which one it used.
+   */
+  start(seed) {
+    this.seed = Number.isFinite(seed) ? seed >>> 0 : (Math.random() * 0x100000000) >>> 0;
     this.reset();
     this.mode = 'running';
     // The first pipe sits comfortably off screen so nobody dies before they
@@ -106,7 +130,7 @@ export class World {
     const high = Math.min(maxCenter, this.lastGapY + PIPES.maxCenterDelta);
 
     pipe.x = x;
-    pipe.gapY = low + Math.random() * Math.max(0, high - low);
+    pipe.gapY = low + this.rand() * Math.max(0, high - low);
     this.lastGapY = pipe.gapY;
     pipe.gapHalf = gapHalf;
     pipe.scored = false;
@@ -130,6 +154,7 @@ export class World {
     this.events.length = 0;
     if (this.mode === 'dead') return this.events;
 
+    this.steps += 1;
     this.elapsed += dt;
 
     const bird = this.bird;
@@ -226,6 +251,24 @@ export class World {
   get activePipes() {
     return this.pipes;
   }
+}
+
+/**
+ * mulberry32 - a small, fast, well-distributed 32-bit PRNG.
+ *
+ * Chosen over Math.random() because a replay needs the same pipe layout twice.
+ * It is seeded per run and consumed only by spawnPipe, so the sequence of gap
+ * positions depends on nothing but the seed and the number of pipes spawned.
+ */
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function next() {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 function circleHitsRect(cx, cy, r, rx, ry, rw, rh) {

@@ -32,6 +32,13 @@ const MAX_ATTEMPTS = 3;
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 200;
 const MAX_BODY_BYTES = 8 * 1024;
+/* A score submission now carries a Challenge Mode replay, which is a seed plus
+   delta-encoded flap steps - small, but bigger than a bare score. The cap is
+   generous for a legitimate run (a 3 minute flight is well under 8 KB) and
+   still bounded. */
+const MAX_SCORE_BODY_BYTES = 64 * 1024;
+const MAX_REPLAY_BYTES = 24 * 1024;
+const MAX_REPLAY_FLAPS = 20000;
 const MAX_CHARACTER_BYTES = 4 * 1024 * 1024;
 const CHARACTER_DIR = path.join(PUBLIC_DIR, 'assets', 'character');
 /** Only these ids may be written, and the id maps straight to <id>.png. This
@@ -123,7 +130,7 @@ class LeaderboardStore {
    * refresh, retry after a timeout) returns the original entry instead of
    * inserting a second row for the same player session.
    */
-  async submit({ sessionId, name, score, attempts }) {
+  async submit({ sessionId, name, score, attempts, replay }) {
     const existing = sessionId ? this.bySession.get(sessionId) : null;
     if (existing) {
       return Object.assign({ entry: existing, duplicate: true }, this.locate(existing));
@@ -135,6 +142,7 @@ class LeaderboardStore {
       name,
       score,
       attempts,
+      replay,
       createdAt: Date.now()
     });
 
@@ -156,7 +164,15 @@ class LeaderboardStore {
   }
 
   top(limit) {
-    return this.entries.slice(0, limit).map((entry, i) => Object.assign({}, entry, { rank: i + 1 }));
+    return this.entries
+      .slice(0, limit)
+      .map((entry, i) => Object.assign(toPublicEntry(entry), { rank: i + 1 }));
+  }
+
+  /** The full recording for one entry, or null. */
+  replayFor(id) {
+    const entry = this.entries.find((e) => e.id === id);
+    return entry && entry.replay ? entry.replay : null;
   }
 
   persist() {
@@ -196,8 +212,55 @@ function normaliseEntry(entry) {
     name: sanitiseName(entry.name),
     score: clampScore(entry.score),
     attempts,
-    createdAt: Number.isFinite(Number(entry.createdAt)) ? Number(entry.createdAt) : Date.now()
+    createdAt: Number.isFinite(Number(entry.createdAt)) ? Number(entry.createdAt) : Date.now(),
+    /* Challenge Mode: the recording of this player's best attempt, or null.
+       Entries written before Challenge Mode existed simply have none, which is
+       exactly the "not challengeable" state the client already handles. */
+    replay: sanitiseReplay(entry.replay)
   };
+}
+
+/**
+ * Structural validation of a replay. The client validates it again before
+ * running it, so this only has to stop the store filling up with junk: right
+ * shape, sane sizes, no nested objects.
+ */
+function sanitiseReplay(replay) {
+  if (!replay || typeof replay !== 'object' || Array.isArray(replay)) return null;
+  if (Number(replay.v) !== 1) return null;
+
+  const seed = Number(replay.seed);
+  const steps = Number(replay.steps);
+  if (!Number.isFinite(seed) || !Number.isFinite(steps)) return null;
+  if (steps <= 0 || steps > 120 * 60 * 12) return null;
+
+  if (!Array.isArray(replay.flaps) || replay.flaps.length > MAX_REPLAY_FLAPS) return null;
+  const flaps = [];
+  for (const value of replay.flaps) {
+    const n = Math.floor(Number(value));
+    if (!Number.isFinite(n) || n < 0) return null;
+    flaps.push(n);
+  }
+
+  const clean = {
+    v: 1,
+    seed: seed >>> 0,
+    characterId: String(replay.characterId || '').slice(0, 32),
+    steps: Math.floor(steps),
+    score: clampScore(replay.score),
+    flaps
+  };
+
+  // Final guard on the encoded size, so one huge record cannot bloat the file.
+  if (Buffer.byteLength(JSON.stringify(clean)) > MAX_REPLAY_BYTES) return null;
+  return clean;
+}
+
+/** Board rows never carry replay blobs - only whether one exists. Fetching the
+ *  recording itself is a separate request, made only when a challenge starts. */
+function toPublicEntry(entry) {
+  const { replay, ...rest } = entry;
+  return Object.assign(rest, { hasReplay: Boolean(replay) });
 }
 
 function stripControlCharacters(value) {
@@ -241,13 +304,13 @@ function sendJson(res, status, body) {
   res.end(payload);
 }
 
-function readBody(req) {
+function readBody(req, limit = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > limit) {
         reject(Object.assign(new Error('Payload too large'), { status: 413 }));
         req.destroy();
         return;
@@ -289,6 +352,7 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, {
       ok: true,
       entries: store.entries.length,
+      replays: store.entries.reduce((n, e) => n + (e.replay ? 1 : 0), 0),
       uptime: Math.round(process.uptime())
     });
   }
@@ -332,8 +396,33 @@ async function handleApi(req, res, url) {
     return sendJson(res, 201, { ok: true, bytes: body.length, path: 'assets/character/' + id + '.png' });
   }
 
+  /* Challenge Mode: the recording behind one leaderboard row. Served on its
+     own rather than inside the board so the board stays small - a full board
+     with replays inlined would be megabytes. */
+  if (url.pathname === '/api/replay' && req.method === 'GET') {
+    const id = String(url.searchParams.get('id') || '').slice(0, 64);
+    if (!id) return sendJson(res, 400, { ok: false, error: 'An entry id is required.' });
+
+    const entry = store.entries.find((e) => e.id === id);
+    if (!entry) return sendJson(res, 404, { ok: false, error: 'No such leaderboard entry.' });
+
+    const replay = entry.replay;
+    if (!replay) {
+      return sendJson(res, 404, {
+        ok: false,
+        error: 'That run was recorded before Challenge Mode, so it has no replay.'
+      });
+    }
+
+    return sendJson(res, 200, {
+      ok: true,
+      replay,
+      entry: { id: entry.id, name: entry.name, score: entry.score, createdAt: entry.createdAt }
+    });
+  }
+
   if (url.pathname === '/api/scores' && req.method === 'POST') {
-    const body = await readBody(req);
+    const body = await readBody(req, MAX_SCORE_BODY_BYTES);
 
     const attempts = Array.isArray(body.attempts)
       ? body.attempts.slice(0, MAX_ATTEMPTS).map(clampScore)
@@ -352,13 +441,14 @@ async function handleApi(req, res, url) {
       sessionId: body.sessionId ? String(body.sessionId).slice(0, 64) : null,
       name: body.name,
       score,
-      attempts
+      attempts,
+      replay: body.replay
     });
 
     return sendJson(res, result.duplicate ? 200 : 201, {
       ok: true,
       duplicate: result.duplicate,
-      entry: Object.assign({}, result.entry, { rank: result.rank }),
+      entry: Object.assign(toPublicEntry(result.entry), { rank: result.rank }),
       rank: result.rank,
       total: result.total,
       entries: store.top(DEFAULT_LIMIT)

@@ -7,9 +7,10 @@
  * re-render on a state change.
  */
 
-import { RULES } from '../config.js';
+import { RULES, CHALLENGE } from '../config.js';
 import { STATE } from '../session/sessionMachine.js';
 import { ROSTER, getVariant } from '../assets/manifest.js';
+import { STANDING, VERDICT } from '../challenge/challengeController.js';
 
 const BUTTON_LOCK_MS = 450;
 
@@ -58,8 +59,39 @@ export class ScreenController {
 
       soundToggle: document.getElementById('soundToggle'),
       soundIcon: document.getElementById('soundIcon'),
-      toast: document.getElementById('toast')
+      toast: document.getElementById('toast'),
+
+      /* Challenge Mode */
+      versusMeName: document.getElementById('versusMeName'),
+      versusMeScore: document.getElementById('versusMeScore'),
+      versusThemName: document.getElementById('versusThemName'),
+      versusThemScore: document.getElementById('versusThemScore'),
+      versusStanding: document.getElementById('versusStanding'),
+
+      countdownBeat: document.getElementById('countdownBeat'),
+
+      briefMeArt: document.getElementById('briefMeArt'),
+      briefThemArt: document.getElementById('briefThemArt'),
+      briefThemName: document.getElementById('briefThemName'),
+      briefTarget: document.getElementById('briefTarget'),
+      challengeForm: document.getElementById('challengeForm'),
+      challengeName: document.getElementById('challengeName'),
+      challengeError: document.getElementById('challengeError'),
+      challengeStart: document.getElementById('challengeStart'),
+      challengeCancel: document.getElementById('challengeCancel'),
+
+      verdict: document.getElementById('verdict'),
+      verdictSub: document.getElementById('verdictSub'),
+      pbBadge: document.getElementById('pbBadge'),
+      crMine: document.getElementById('crMine'),
+      crTheirs: document.getElementById('crTheirs'),
+      crThemLabel: document.getElementById('crThemLabel'),
+      rematchButton: document.getElementById('rematchButton'),
+      challengeExit: document.getElementById('challengeExit')
     };
+
+    /* Cheap guard against writing the same HUD strings 120 times a second. */
+    this.lastVersus = { mine: -1, theirs: -1, state: '' };
 
     this.lastHudScore = null;
     this.lastPipsKey = '';
@@ -108,6 +140,27 @@ export class ScreenController {
 
     this.onToggleSound = () => this.call('onToggleSound');
 
+    this.onChallengeSubmit = (event) => {
+      event.preventDefault();
+      if (this.isLocked(this.el.challengeStart)) return;
+      const name = this.el.challengeName.value;
+      this.el.challengeName.blur();
+      this.call('onChallengeStart', name);
+    };
+
+    this.onChallengeCancel = () => this.call('onChallengeCancel');
+    this.onRematch = () => {
+      if (this.isLocked(this.el.rematchButton)) return;
+      this.lock(this.el.rematchButton);
+      this.call('onRematch');
+    };
+    this.onChallengeExit = () => this.call('onChallengeExit');
+
+    this.el.challengeForm.addEventListener('submit', this.onChallengeSubmit);
+    this.el.challengeCancel.addEventListener('click', this.onChallengeCancel);
+    this.el.rematchButton.addEventListener('click', this.onRematch);
+    this.el.challengeExit.addEventListener('click', this.onChallengeExit);
+
     this.el.nameForm.addEventListener('submit', this.onSubmitName);
     this.el.continueButton.addEventListener('click', this.onContinue);
     this.el.abandonButton.addEventListener('click', this.onAbandon);
@@ -116,6 +169,11 @@ export class ScreenController {
   }
 
   destroy() {
+    this.el.challengeForm.removeEventListener('submit', this.onChallengeSubmit);
+    this.el.challengeCancel.removeEventListener('click', this.onChallengeCancel);
+    this.el.rematchButton.removeEventListener('click', this.onRematch);
+    this.el.challengeExit.removeEventListener('click', this.onChallengeExit);
+    clearTimeout(this.countdownTimer);
     this.el.nameForm.removeEventListener('submit', this.onSubmitName);
     this.el.continueButton.removeEventListener('click', this.onContinue);
     this.el.abandonButton.removeEventListener('click', this.onAbandon);
@@ -153,7 +211,9 @@ export class ScreenController {
       this.el.startButton,
       this.el.continueButton,
       this.el.abandonButton,
-      this.el.newPlayerButton
+      this.el.newPlayerButton,
+      this.el.challengeStart,
+      this.el.rematchButton
     ]) {
       const timer = this.locks.get(button);
       if (timer) clearTimeout(timer);
@@ -379,9 +439,174 @@ export class ScreenController {
       row.appendChild(el('span', '', String(entry.rank)));
       row.appendChild(el('span', '', entry.name));
       row.appendChild(el('span', '', String(entry.score)));
+
+      /* Only rows with a recording can be raced. Everything submitted before
+         Challenge Mode existed simply has no button, which is the honest
+         answer rather than a button that fails when pressed. */
+      if (entry.hasReplay && entry.id) {
+        row.classList.add('mini-board__row--challengeable');
+        const button = el('button', 'mini-board__challenge', 'RACE');
+        button.type = 'button';
+        button.dataset.entry = entry.id;
+        button.dataset.name = entry.name;
+        button.dataset.score = String(entry.score);
+        row.appendChild(button);
+      }
+
       fragment.appendChild(row);
     }
     list.replaceChildren(fragment);
+
+    /* Early in an event nothing has a recording yet, so the hint would be
+       pointing at buttons that are not there. */
+    const hint = document.querySelector('.mini-board__hint');
+    if (hint) hint.hidden = !list.querySelector('.mini-board__challenge');
+
+    // One delegated listener for the whole list, bound once.
+    if (!this.miniBoardBound) {
+      this.miniBoardBound = true;
+      list.addEventListener('click', (event) => {
+        const button = event.target.closest && event.target.closest('.mini-board__challenge');
+        if (!button || button.disabled) return;
+        this.call('onChallenge', {
+          id: button.dataset.entry,
+          name: button.dataset.name,
+          score: Number(button.dataset.score) || 0
+        });
+      });
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* Challenge Mode                                                      */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Drives the stage directly rather than going through render(snapshot).
+   *
+   * A challenge runs while SessionMachine sits at ATTRACT, so there is no
+   * session state to reflect - and deliberately so: a duel must not be able to
+   * disturb a three-attempt session.
+   */
+  setScreen(name) {
+    this.el.stage.dataset.screen = name;
+  }
+
+  /** The confirmation screen. `opponent` is the leaderboard row being raced. */
+  renderChallengeBrief(opponent, ghostVariant, playerVariant, suggestedName) {
+    this.unlockAll();
+    this.el.briefThemName.textContent = opponent.name;
+    this.el.briefTarget.textContent = String(opponent.score);
+    this.el.challengeError.hidden = true;
+    this.el.challengeError.textContent = '';
+
+    if (suggestedName != null) this.el.challengeName.value = suggestedName;
+
+    // The opponent flew as a specific character; show that face, washed cool.
+    // The player's own side shows what they are about to fly as.
+    setArt(this.el.briefThemArt, ghostVariant);
+    setArt(this.el.briefMeArt, playerVariant);
+
+    this.setScreen('challengeBrief');
+    // Focus lands on the name field so a keyboard player can just type.
+    try { this.el.challengeName.focus({ preventScroll: true }); } catch { /* ignore */ }
+  }
+
+  showChallengeError(message) {
+    this.el.challengeError.textContent = message;
+    this.el.challengeError.hidden = !message;
+  }
+
+  /**
+   * Runs the pre-run countdown, calling `onDone` after the last beat.
+   * Returns a cancel function so a player who walks away does not get a
+   * countdown firing into an empty screen.
+   */
+  runCountdown(onDone) {
+    this.setScreen('challengeCountdown');
+    const beats = CHALLENGE.countdownBeats;
+    let index = 0;
+    let cancelled = false;
+
+    const tick = () => {
+      if (cancelled) return;
+      if (index >= beats.length) {
+        onDone();
+        return;
+      }
+      const beat = beats[index];
+      // Re-trigger the pop animation on each beat.
+      const node = this.el.countdownBeat;
+      node.textContent = beat;
+      node.dataset.go = String(index === beats.length - 1);
+      node.style.animation = 'none';
+      void node.offsetWidth;
+      node.style.animation = '';
+      index += 1;
+      this.countdownTimer = setTimeout(tick, CHALLENGE.countdownStepMs);
+    };
+
+    clearTimeout(this.countdownTimer);
+    tick();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(this.countdownTimer);
+    };
+  }
+
+  /** Live head-to-head HUD. Called every frame, so it writes only on change. */
+  setVersus(standing) {
+    const last = this.lastVersus;
+    if (standing.mine !== last.mine) {
+      this.el.versusMeScore.textContent = String(standing.mine);
+      last.mine = standing.mine;
+    }
+    if (standing.target !== last.theirs) {
+      this.el.versusThemScore.textContent = String(standing.target);
+      last.theirs = standing.target;
+    }
+    if (standing.state !== last.state) {
+      this.el.versusStanding.dataset.state = standing.state;
+      this.el.versusStanding.textContent = standingText(standing);
+      last.state = standing.state;
+    }
+  }
+
+  /** Names change only when a challenge opens, so this is separate. */
+  setVersusIdentity(playerName, opponentName) {
+    this.el.versusMeName.textContent = playerName || 'YOU';
+    this.el.versusThemName.textContent = opponentName || 'RIVAL';
+    this.lastVersus = { mine: -1, theirs: -1, state: '' };
+  }
+
+  renderChallengeResult(result) {
+    this.unlockAll();
+
+    const won = result.verdict === VERDICT.WON;
+    const tied = result.verdict === VERDICT.TIED;
+
+    this.el.verdict.dataset.verdict = result.verdict;
+    this.el.verdict.textContent = won ? 'YOU WON' : tied ? 'DEAD HEAT' : 'YOU LOST';
+
+    if (won) {
+      this.el.verdictSub.textContent =
+        'Beat ' + result.opponentName + ' by ' + result.margin +
+        (result.margin === 1 ? ' point' : ' points');
+    } else if (tied) {
+      this.el.verdictSub.textContent = 'Matched ' + result.opponentName + ' exactly - nobody wins a tie';
+    } else {
+      const behind = Math.abs(result.margin);
+      this.el.verdictSub.textContent =
+        result.opponentName + ' held on by ' + behind + (behind === 1 ? ' point' : ' points');
+    }
+
+    this.el.pbBadge.hidden = !result.personalBest;
+    this.el.crMine.textContent = String(result.mine);
+    this.el.crTheirs.textContent = String(result.target);
+    this.el.crThemLabel.textContent = result.opponentName;
+
+    this.setScreen('challengeResult');
   }
 
   /**
@@ -491,6 +716,35 @@ export class ScreenController {
       this.el.toast.hidden = true;
     }, duration);
   }
+}
+
+/** The single line of copy that tells a player where they stand. */
+function standingText(standing) {
+  switch (standing.state) {
+    case STANDING.AHEAD:
+      return 'AHEAD BY ' + standing.diff;
+    case STANDING.LEVEL:
+      return 'LEVEL - ONE MORE TO WIN';
+    case STANDING.CLEAR:
+      // The ghost has crashed: this is the moment the run becomes winnable.
+      return 'THEY ARE DOWN - ' + standing.needed + ' TO WIN';
+    default:
+      return 'NECK AND NECK';
+  }
+}
+
+/** Puts a character portrait in a brief-screen circle, or clears it. */
+function setArt(node, variant) {
+  if (!node) return;
+  if (!variant || !variant.character || !variant.character.src) {
+    node.replaceChildren(document.createTextNode('?'));
+    return;
+  }
+  const img = document.createElement('img');
+  img.alt = '';
+  img.src = variant.character.src;
+  img.addEventListener('error', () => node.replaceChildren(document.createTextNode('?')));
+  node.replaceChildren(img);
 }
 
 function el(tag, className, text) {

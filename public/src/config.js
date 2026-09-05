@@ -101,3 +101,30 @@ export const STORAGE = Object.freeze({
   sessionKey: 'flappyfest.session.v1',
   mutedKey: 'flappyfest.muted.v1'
 });
+
+/**
+ * Challenge Mode - racing a recorded run from the leaderboard.
+ *
+ * A challenge is a single exhibition attempt: it does not consume any of the
+ * three leaderboard attempts and does not itself go on the board, so the
+ * "best of three" contract the rest of the game rests on is untouched.
+ */
+export const CHALLENGE = Object.freeze({
+  /** Beats of the pre-run countdown, in milliseconds each. */
+  countdownStepMs: 700,
+  countdownBeats: ['3', '2', '1', 'GO'],
+  /** How translucent the ghost is drawn. Low enough to read as "not you",
+   *  high enough to actually follow at 288px wide. */
+  ghostAlpha: 0.45,
+  /** Cool wash laid over the ghost sprite so it never reads as a second live
+   *  player, even when both characters are the same person. */
+  ghostTint: '#7fd4ff',
+  ghostTintStrength: 0.55,
+  /** A replay bigger than this is refused rather than stored. */
+  maxReplayBytes: 24 * 1024,
+  /** Personal bests per player name, for the "new personal best" result. */
+  personalBestKey: 'flappyfest.challenge.pb.v1',
+  /** A challenge left sitting on the brief or result screen hands the stall
+   *  back to the queue, same as the main game's idle reset. */
+  idleResetMs: 60000
+});

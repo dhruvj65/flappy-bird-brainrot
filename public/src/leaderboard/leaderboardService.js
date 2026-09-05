@@ -63,7 +63,7 @@ export class LeaderboardService {
    * Submits the session's best score. Safe to call repeatedly with the same
    * sessionId: the same result comes back and no second entry is created.
    */
-  submit({ sessionId, name, score, attempts }) {
+  submit({ sessionId, name, score, attempts, replay }) {
     if (!sessionId) return Promise.reject(new Error('A sessionId is required to submit a score.'));
 
     const cached = this.results[sessionId];
@@ -72,7 +72,7 @@ export class LeaderboardService {
     const existing = this.inflight.get(sessionId);
     if (existing) return existing;
 
-    const promise = this.performSubmit({ sessionId, name, score, attempts }).finally(() => {
+    const promise = this.performSubmit({ sessionId, name, score, attempts, replay }).finally(() => {
       this.inflight.delete(sessionId);
     });
 
@@ -87,6 +87,10 @@ export class LeaderboardService {
       score: payload.score,
       attempts: Array.isArray(payload.attempts) ? payload.attempts : []
     };
+    /* The recording of the attempt that produced the best score, so this row
+       can be challenged later. Omitted entirely when there is nothing to send,
+       which keeps an offline queue entry the same size it always was. */
+    if (payload.replay) body.replay = payload.replay;
 
     let lastError = null;
     for (let attempt = 0; attempt <= this.config.submitRetries; attempt += 1) {
@@ -246,13 +250,45 @@ export class LeaderboardService {
   /* Transport                                                           */
   /* ------------------------------------------------------------------ */
 
+  /**
+   * Fetches the recording behind one leaderboard row, for Challenge Mode.
+   *
+   * Never queued and never retried: a challenge is an immediate, interactive
+   * request, and failing fast lets the UI say "no replay" rather than hanging
+   * the player on a spinner.
+   */
+  async fetchReplay(entryId) {
+    if (!entryId) return { ok: false, error: "That row has no id." };
+    try {
+      const data = await this.request(
+        this.config.apiBase + "/replay?id=" + encodeURIComponent(entryId),
+        { method: "GET" }
+      );
+      return { ok: true, replay: data.replay, entry: data.entry };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  }
+
   async request(url, options) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.config.requestTimeoutMs);
 
     try {
       const response = await fetch(url, { ...options, signal: controller.signal, cache: 'no-store' });
-      if (!response.ok) throw new Error('Leaderboard responded ' + response.status);
+      if (!response.ok) {
+        /* The API sends a human-readable reason in the body ("that run has no
+           replay"), which is far more use to a player than the status code.
+           Fall back to the code only when there is no message to show. */
+        let reason = '';
+        try {
+          const body = await response.json();
+          reason = body && typeof body.error === 'string' ? body.error : '';
+        } catch {
+          reason = '';
+        }
+        throw new Error(reason || 'Leaderboard responded ' + response.status);
+      }
       const data = await response.json();
       if (!data || data.ok === false) throw new Error((data && data.error) || 'Leaderboard error');
       return data;

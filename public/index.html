@@ -24,6 +24,30 @@
           </div>
         </div>
 
+        <!-- ------------------------------------------------------------ -->
+        <!-- CHALLENGE HUD: live head-to-head, only during a challenge run -->
+        <!-- ------------------------------------------------------------ -->
+        <div class="versus" id="versus" aria-hidden="true">
+          <div class="versus__bar">
+            <div class="versus__side versus__side--me">
+              <span class="versus__label" id="versusMeName">YOU</span>
+              <span class="versus__score" id="versusMeScore">0</span>
+            </div>
+            <div class="versus__mid">
+              <span class="versus__vs">VS</span>
+            </div>
+            <div class="versus__side versus__side--them">
+              <span class="versus__label">
+                <span class="ghost-dot" aria-hidden="true"></span>
+                <span id="versusThemName">RIVAL</span>
+              </span>
+              <span class="versus__score" id="versusThemScore">0</span>
+            </div>
+          </div>
+          <div class="versus__standing" id="versusStanding" data-state="chasing">NECK AND NECK</div>
+          <p class="versus__ghost-note">Ghost replay &middot; not a live player</p>
+        </div>
+
         <button class="sound-toggle" id="soundToggle" data-no-flap type="button" aria-label="Toggle sound">
           <span id="soundIcon">SOUND ON</span>
         </button>
@@ -75,6 +99,7 @@
                   <a class="mini-board__all" href="/leaderboard.html">See all &rsaquo;</a>
                 </div>
                 <ol class="mini-board__list" id="miniBoardList"></ol>
+                <p class="mini-board__hint">Tap a rival to race their ghost</p>
               </div>
             </aside>
           </div>
@@ -179,6 +204,95 @@
             </aside>
           </div>
         </section>
+
+        <!-- ------------------------------------------------------------ -->
+        <!-- CHALLENGE BRIEF: confirm the duel before it starts            -->
+        <!-- ------------------------------------------------------------ -->
+        <section class="screen screen--challenge" data-screen="challengeBrief" data-no-flap>
+          <div class="centre centre--wide">
+            <p class="eyebrow eyebrow--hot">Challenge</p>
+
+            <div class="duel">
+              <div class="duel__side">
+                <div class="duel__art duel__art--me" id="briefMeArt"></div>
+                <span class="duel__name">YOU</span>
+              </div>
+
+              <div class="duel__vs">
+                <span class="duel__vs-text">VS</span>
+              </div>
+
+              <div class="duel__side duel__side--them">
+                <div class="duel__art duel__art--ghost" id="briefThemArt"></div>
+                <span class="duel__name" id="briefThemName">RIVAL</span>
+                <span class="duel__tag">
+                  <span class="ghost-dot" aria-hidden="true"></span>Ghost replay
+                </span>
+              </div>
+            </div>
+
+            <p class="duel__target">
+              Beat <strong id="briefTarget">0</strong> to win
+            </p>
+
+            <form class="challenge-name" id="challengeForm" autocomplete="off">
+              <label class="name-form__label" for="challengeName">Your name</label>
+              <input
+                class="name-form__input"
+                id="challengeName"
+                type="text"
+                maxlength="14"
+                placeholder="TYPE YOUR NAME"
+                autocomplete="off"
+                autocapitalize="characters"
+                spellcheck="false"
+              />
+              <p class="challenge-error" id="challengeError" hidden></p>
+              <div class="action-row">
+                <button class="btn btn--primary btn--jumbo" id="challengeStart" type="submit">
+                  START DUEL
+                </button>
+                <button class="btn btn--ghost" id="challengeCancel" type="button">Back</button>
+              </div>
+            </form>
+
+            <p class="challenge-note">
+              You will fly the exact same pipes they did. Their run plays beside you as a ghost.
+            </p>
+          </div>
+        </section>
+
+        <!-- ------------------------------------------------------------ -->
+        <!-- CHALLENGE RESULT                                             -->
+        <!-- ------------------------------------------------------------ -->
+        <section class="screen screen--challenge-result" data-screen="challengeResult" data-no-flap>
+          <div class="centre centre--wide">
+            <p class="verdict" id="verdict" data-verdict="lost">YOU LOST</p>
+            <p class="verdict__sub" id="verdictSub">Beaten by 3</p>
+
+            <div class="pb-badge" id="pbBadge" hidden>NEW PERSONAL BEST</div>
+
+            <div class="score-row">
+              <div class="stat stat--hero">
+                <span class="stat__label">You</span>
+                <span class="stat__value" id="crMine">0</span>
+              </div>
+              <div class="stat">
+                <span class="stat__label" id="crThemLabel">Rival</span>
+                <span class="stat__value stat__value--sm" id="crTheirs">0</span>
+              </div>
+            </div>
+
+            <div class="action-row">
+              <button class="btn btn--primary btn--jumbo" id="rematchButton" type="button">REMATCH</button>
+              <button class="btn btn--ghost" id="challengeExit" type="button">Back to leaderboard</button>
+            </div>
+          </div>
+        </section>
+
+        <div class="countdown" id="countdown" aria-hidden="true">
+          <span class="countdown__beat" id="countdownBeat">3</span>
+        </div>
 
         <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
       </div>

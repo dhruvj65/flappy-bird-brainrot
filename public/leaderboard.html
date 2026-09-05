@@ -149,6 +149,41 @@
         .when, th.when-h { display: none; }
       }
 
+      /* Challenge Mode: the same cool blue the game uses for a ghost. */
+      .race {
+        display: inline-block;
+        padding: 6px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(127, 212, 255, 0.45);
+        background: rgba(127, 212, 255, 0.14);
+        color: #7fd4ff;
+        font: inherit;
+        font-size: 0.82em;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .race:hover {
+        background: rgba(127, 212, 255, 0.3);
+        color: #eaf8ff;
+      }
+
+      /* A run recorded before Challenge Mode existed. Said plainly rather than
+         shown as a button that would fail when pressed. */
+      .no-race {
+        font-size: 0.78em;
+        color: var(--ink-dim);
+        opacity: 0.55;
+        white-space: nowrap;
+      }
+
+      .race-h, .race-c { text-align: right; width: 1%; }
+
+      @media (max-width: 520px) {
+        .race-c, th.race-h { display: none; }
+      }
+
       .empty, .error {
         padding: clamp(30px, 8vh, 60px) 20px;
         text-align: center;
@@ -211,6 +246,7 @@
               <th class="tries-h tries">Attempts</th>
               <th class="when-h when">Played</th>
               <th style="text-align:right">Best</th>
+              <th class="race-h">Race</th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>
@@ -220,7 +256,7 @@
 
       <footer>
         <span class="live"><span class="dot" id="dot"></span><span id="status">Live - refreshes every 10s</span></span>
-        <span>Best of three attempts per player</span>
+        <span>Best of three attempts per player &middot; RACE to fly their ghost</span>
       </footer>
     </div>
 
@@ -294,6 +330,20 @@
 
           row.appendChild(element('td', 'when', whenText(entry.createdAt)));
           row.appendChild(element('td', 'score', String(entry.score)));
+
+          /* Challenge Mode. Only rows carrying a recording can be raced; the
+             game page picks the id up from the query string. */
+          const race = element('td', 'race-c');
+          if (entry.hasReplay && entry.id) {
+            const link = element('a', 'race', 'RACE');
+            link.href = '/?challenge=' + encodeURIComponent(entry.id);
+            link.title = 'Race ' + entry.name + ' against their recorded run';
+            race.appendChild(link);
+          } else {
+            race.appendChild(element('span', 'no-race', 'no replay'));
+          }
+          row.appendChild(race);
+
           fragment.appendChild(row);
         }
         els.rows.appendChild(fragment);

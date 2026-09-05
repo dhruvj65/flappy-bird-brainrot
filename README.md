@@ -22,6 +22,8 @@ not just the sprite.
 The character is chosen **before every attempt**, not once per session, so a
 player can use all three of their tries on three different characters.
 
+- **Challenge Mode**: race any leaderboard run as a translucent ghost, on the
+  exact pipes they flew
 - **Portrait pixel art** at the classic 288x512 arcade scale, upscaled crisply to any screen
 - Zero npm dependencies — `node server.js` and it runs
 - No build step, no bundler, no transpiler
@@ -192,6 +194,7 @@ delete (or archive) `data/leaderboard.json`.
 | `GET /api/leaderboard?limit=n` | Top n entries, ranked |
 | `POST /api/scores` | Submit one session's best score |
 | `GET /api/health` | Entry count and uptime |
+| `GET /api/replay?id=<entryId>` | One entry's recorded run, for Challenge Mode |
 | `POST /api/character?id=<id>` | Installs a PNG as that character's art (used by the cutout tool) |
 
 `POST /api/character?id=<id>` accepts PNG data only, caps the body at 4 MB, and
@@ -221,6 +224,73 @@ the session score was.
 **If the backend is down**, the score is queued in `localStorage`, the player
 still gets a rank computed against the last known board, the screen says so
 plainly, and the queue is flushed automatically on the next successful contact.
+
+## Challenge Mode
+
+Any leaderboard row carrying a recording shows a **RACE** button - on the
+attract screen's top-four panel and on every row of the full board. Pressing it
+opens a brief (who you are racing, what you have to beat), counts down, and
+flies their run beside you as a translucent ghost.
+
+**The ghost is not an animation.** It is a second `World` - the same class the
+live player is running - fed the opponent's recorded input. It obeys the same
+gravity and dies on the same pipe they died on.
+
+### How the recording works
+
+`world.js` is deterministic: its only entropy is a seeded PRNG, and the engine
+advances it in exact 1/120s steps. So a run is fully described by **a seed plus
+the step indices the player flapped on** - about 300 bytes for a 40 second
+flight, against tens of kilobytes for sampled positions. A frame drop cannot
+desynchronise it, because the recording is indexed by simulation step rather
+than by wall-clock time.
+
+Every normal attempt is recorded. When a session is submitted, the recording of
+the attempt that produced the best score rides along with it.
+
+### Why it is a fair contest
+
+The challenger plays **the opponent's seed**, so both face an identical pipe
+layout. That has a consequence worth knowing: since the bird's x is fixed and
+scoring is positional, two runs that are both still alive have necessarily
+passed the same pipes and are **always tied**. Scores can only separate when
+somebody dies.
+
+So the contest is not a running score gap - it is *survive past the pipe they
+died on*, and the HUD is built around that:
+
+| Standing | Meaning |
+| --- | --- |
+| NECK AND NECK | both still flying, dead level |
+| THEY ARE DOWN - n TO WIN | the ghost has crashed; the lead is now winnable |
+| LEVEL - ONE MORE TO WIN | you have matched their score and are still alive |
+| AHEAD BY n | past them, and every pipe extends it |
+
+### Rules and edge cases
+
+- **A challenge is an exhibition.** It does not consume any of the three
+  leaderboard attempts and does not post a score, so the best-of-three contract
+  the rest of the game rests on is untouched. `SessionMachine` sits at ATTRACT
+  throughout and is never modified by Challenge Mode.
+- **Only rows with a recording are challengeable.** Anything submitted before
+  Challenge Mode existed has no button and says "no replay" - the honest answer
+  rather than a button that fails when pressed.
+- **The run raced is their best attempt** - the one that earned their place.
+- **Self-challenges are refused**, matched on name, case and spacing insensitive.
+- **A tie is not a win.** Matching the opponent exactly reads as DEAD HEAT,
+  because the brief promised you had to beat them.
+- **Quitting is free.** Abandoning, walking away (the idle reset applies to the
+  brief and result screens, never mid-flight) or refreshing records nothing.
+- **Personal bests are per device**, kept in `localStorage` under the player's
+  name, which is what "NEW PERSONAL BEST" is measured against.
+
+### Cost
+
+A recording is a few hundred bytes and is fetched only when a challenge starts -
+`GET /api/leaderboard` returns a `hasReplay` flag, never the blob, so a full
+board stays small. The ghost costs one extra `World.update` per fixed step and
+one pre-tinted blit per frame; its pipes are never drawn, because they are the
+same pipes the live player already has on screen.
 
 ## The leaderboard screen
 
@@ -268,6 +338,8 @@ public/
     game/engine.js            fixed-timestep loop
     game/input.js             pointer/keyboard, attach/detach
     session/sessionMachine.js the three-attempt rules
+    challenge/replay.js       recording + ghost playback
+    challenge/challengeController.js  the rules of a duel
     leaderboard/leaderboardService.js  API, dedupe, offline queue
     ui/screens.js             every DOM read/write
 ```

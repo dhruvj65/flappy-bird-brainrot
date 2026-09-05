@@ -14,7 +14,7 @@
  * style; no third-party sprite assets are used or reproduced.
  */
 
-import { VIEW, PHYSICS, PIPES } from '../config.js';
+import { VIEW, PHYSICS, PIPES, CHALLENGE } from '../config.js';
 import { FLOOR } from './world.js';
 
 const PARTICLE_POOL = 48;
@@ -87,6 +87,15 @@ export class Renderer {
     this.character = null;
     this.characterConfig = null;
     this.characterSprite = null;
+
+    /* Challenge Mode's ghost. Kept as its own pre-tinted sprite so drawing it
+       costs one blit: tinting per frame would mean a compositing pass on every
+       frame of every challenge. Null whenever no challenge is running. */
+    this.ghostWorld = null;
+    this.ghostSprite = null;
+    this.ghostConfig = null;
+    this.ghostWidth = 0;
+    this.ghostHeight = 0;
     this.time = 0;
     this.lastFlapAt = -10;
 
@@ -119,6 +128,46 @@ export class Renderer {
     this.characterSprite = built ? built.canvas : null;
     this.faceWidth = built ? built.width : 0;
     this.faceHeight = built ? built.height : 0;
+  }
+
+  /**
+   * The opponent world to draw alongside the live one, or null.
+   *
+   * Held here rather than threaded through the engine so the render loop stays
+   * exactly as it was: Engine still calls draw(world) and knows nothing about
+   * Challenge Mode.
+   */
+  setGhostWorld(ghostWorld) {
+    this.ghostWorld = ghostWorld || null;
+  }
+
+  /**
+   * Installs (or clears, with null) the artwork the ghost wears - the
+   * character the challenged player actually used for their recorded run.
+   *
+   * The sprite is built once and baked with its cool wash already applied, so
+   * the per-frame cost is a single drawImage at reduced alpha.
+   */
+  setGhostCharacter(image, characterConfig) {
+    if (!image) {
+      this.ghostSprite = null;
+      this.ghostConfig = null;
+      this.ghostWidth = 0;
+      this.ghostHeight = 0;
+      return;
+    }
+
+    const built = buildCharacterSprite(image, characterConfig);
+    if (!built) {
+      this.ghostSprite = null;
+      this.ghostConfig = null;
+      return;
+    }
+
+    this.ghostConfig = characterConfig;
+    this.ghostWidth = built.width;
+    this.ghostHeight = built.height;
+    this.ghostSprite = tintSprite(built.canvas, CHALLENGE.ghostTint, CHALLENGE.ghostTintStrength);
   }
 
   /* ---------------------------------------------------------------------- */
@@ -269,6 +318,7 @@ export class Renderer {
 
   /** Drops every transient effect - used when a session is torn down. */
   clearEffects() {
+    this.ghostWorld = null;
     this.shakeTime = 0;
     this.flashTime = 0;
     for (const particle of this.particles) particle.life = 0;
@@ -323,7 +373,15 @@ export class Renderer {
   /* Frame                                                                  */
   /* ---------------------------------------------------------------------- */
 
-  draw(world) {
+  /**
+   * `ghostWorld` is the Challenge Mode opponent, or null in normal play.
+   *
+   * Only the live world's pipes are drawn. Both worlds run the same seed, so
+   * while both are alive their pipe layouts are identical by construction -
+   * drawing the ghost's as well would just overdraw the same pixels.
+   */
+  draw(world, ghostWorld) {
+    const ghost = ghostWorld || this.ghostWorld;
     const ctx = this.ctx;
     ctx.save();
 
@@ -343,6 +401,9 @@ export class Renderer {
     this.drawParallax(this.layers.cityNear, world.distance * 0.38, FLOOR - 116);
 
     this.drawPipes(world);
+    // Behind the ground and the live bird: the player must never lose track of
+    // themselves behind a translucent opponent.
+    if (ghost) this.drawGhost(ghost);
     this.drawGround(world);
     this.drawParticles(ctx);
     this.drawBird(world);
@@ -463,6 +524,69 @@ export class Renderer {
 
     if (this.character) this.drawFaceCharacter(ctx);
     else this.drawPixelBird(ctx);
+
+    ctx.restore();
+  }
+
+  /**
+   * The opponent's recorded run, drawn translucent.
+   *
+   * Three cues separate it from the live player, because one is not enough at
+   * 288px: it is see-through, washed cool, and trails a short motion echo. A
+   * crashed ghost fades further still so a dead opponent stops competing for
+   * attention while the player is still flying.
+   */
+  drawGhost(ghostWorld) {
+    const ctx = this.ctx;
+    const bird = ghostWorld.bird;
+    const crashed = ghostWorld.mode !== 'running';
+    const alpha = crashed ? CHALLENGE.ghostAlpha * 0.55 : CHALLENGE.ghostAlpha;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Motion echo: two faint copies trailing the ghost's own path.
+    if (!crashed) {
+      for (let i = 2; i >= 1; i -= 1) {
+        ctx.globalAlpha = alpha * (0.16 * i);
+        this.blitGhost(ctx, bird.x - i * 7, bird.y - bird.vy * 0.012 * i, bird.rotation);
+      }
+      ctx.globalAlpha = alpha;
+    }
+
+    this.blitGhost(ctx, bird.x, bird.y, bird.rotation);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  /** One ghost blit at a position/rotation, sprite or fallback silhouette. */
+  blitGhost(ctx, x, y, rotation) {
+    ctx.save();
+    ctx.translate(Math.round(x), Math.round(y));
+    ctx.rotate(rotation);
+
+    if (this.ghostSprite) {
+      const cfg = this.ghostConfig || {};
+      const anchorX = Number.isFinite(cfg.anchorX) ? cfg.anchorX : 0.5;
+      const shiftX = (0.5 - anchorX) * this.ghostWidth;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(
+        this.ghostSprite,
+        Math.round(-this.ghostWidth / 2 + shiftX),
+        -Math.round(this.ghostHeight / 2),
+        this.ghostWidth,
+        this.ghostHeight
+      );
+      ctx.imageSmoothingEnabled = false;
+    } else {
+      // No artwork for the opponent's character: a plain puck still reads as
+      // a competitor and keeps the challenge playable.
+      ctx.fillStyle = CHALLENGE.ghostTint;
+      ctx.beginPath();
+      ctx.arc(0, 0, PHYSICS.birdRadius + 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     ctx.restore();
   }
@@ -643,6 +767,30 @@ function drawGround(ctx, width, height, palette) {
  * Returns the drawn size in VIEW units alongside the bitmap: the width comes
  * from the image's own aspect ratio so a head cutout is not squashed square.
  */
+/**
+ * Returns a copy of a sprite washed toward `color`, preserving its alpha.
+ *
+ * 'source-atop' paints only where the sprite is already opaque, so a head
+ * cutout keeps its silhouette instead of gaining a coloured box. Done once per
+ * challenge, never per frame.
+ */
+function tintSprite(sprite, color, strength) {
+  const canvas = document.createElement('canvas');
+  canvas.width = sprite.width;
+  canvas.height = sprite.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return sprite;
+
+  ctx.drawImage(sprite, 0, 0);
+  ctx.globalCompositeOperation = 'source-atop';
+  ctx.globalAlpha = Math.max(0, Math.min(1, strength));
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = 'source-over';
+  return canvas;
+}
+
 function buildCharacterSprite(image, config) {
   const cfg = config || {};
   const source = trimTransparentEdges(image);

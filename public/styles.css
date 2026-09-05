@@ -251,7 +251,9 @@ body {
 .stage[data-screen="ready"] .screen[data-screen="ready"],
 .stage[data-screen="attemptOver"] .screen[data-screen="attemptOver"],
 .stage[data-screen="submitting"] .screen[data-screen="submitting"],
-.stage[data-screen="result"] .screen[data-screen="result"] {
+.stage[data-screen="result"] .screen[data-screen="result"],
+.stage[data-screen="challengeBrief"] .screen[data-screen="challengeBrief"],
+.stage[data-screen="challengeResult"] .screen[data-screen="challengeResult"] {
   display: flex;
   animation: screen-in 0.22s ease-out;
 }
@@ -1142,5 +1144,391 @@ body {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Challenge Mode
+
+   Same tokens and the same container-query sizing as the rest of the game. The
+   only new colour idea is --ghost, a cool blue that means "recording, not a
+   live player" and is used nowhere else.
+   -------------------------------------------------------------------------- */
+
+:root {
+  --ghost: #7fd4ff;
+  --ghost-dim: rgba(127, 212, 255, 0.16);
+}
+
+/* The ghost marker: a hollow ring, a shape used nowhere else in the game, and
+   repeated everywhere the opponent is named. */
+.ghost-dot {
+  display: inline-block;
+  width: 0.62em;
+  height: 0.62em;
+  margin-right: 0.4em;
+  border-radius: 50%;
+  border: 1.5px solid var(--ghost);
+  background: var(--ghost-dim);
+}
+
+/* ---- Challengeable leaderboard rows ------------------------------------ */
+
+.mini-board__row--challengeable {
+  grid-template-columns: 2.2em 1fr auto auto;
+}
+
+.mini-board__challenge {
+  padding: 0.24em 0.7em;
+  border-radius: 999px;
+  border: 1px solid rgba(127, 212, 255, 0.45);
+  background: var(--ghost-dim);
+  color: var(--ghost);
+  font: inherit;
+  font-size: 0.72em;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mini-board__challenge:hover:not(:disabled) {
+  background: rgba(127, 212, 255, 0.28);
+  color: #eaf8ff;
+}
+.mini-board__challenge:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.mini-board__hint {
+  margin: 0.8cqh 0 0;
+  font-size: clamp(9px, 2cqh, 12px);
+  color: var(--ink-dim);
+  opacity: 0.75;
+}
+
+/* ---- Brief screen ------------------------------------------------------- */
+
+.eyebrow--hot {
+  color: var(--ghost);
+}
+
+.duel {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 2cqw;
+  width: 100%;
+  margin: 1.6cqh 0 1.2cqh;
+}
+
+.duel__side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5cqh;
+  min-width: 0;
+}
+
+.duel__art {
+  width: clamp(46px, 13cqh, 96px);
+  height: clamp(46px, 13cqh, 96px);
+  border-radius: 50%;
+  border: 2px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.04);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.duel__art img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* The opponent portrait is washed the same cool blue as the in-game ghost, so
+   the thing shown on the brief is the thing that gets raced. */
+.duel__art--ghost {
+  border-color: rgba(127, 212, 255, 0.55);
+  background: var(--ghost-dim);
+  box-shadow: 0 0 18px rgba(127, 212, 255, 0.22);
+}
+.duel__art--ghost img {
+  opacity: 0.62;
+  filter: grayscale(0.35) sepia(1) hue-rotate(160deg) saturate(2.4);
+}
+
+.duel__name {
+  font-size: clamp(11px, 2.6cqh, 17px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.duel__side--them .duel__name {
+  color: var(--ghost);
+}
+
+.duel__tag {
+  font-size: clamp(8px, 1.9cqh, 11px);
+  color: var(--ink-dim);
+  letter-spacing: 0.05em;
+}
+
+.duel__vs-text {
+  font-size: clamp(16px, 4.4cqh, 30px);
+  font-weight: 900;
+  color: var(--ink-dim);
+  letter-spacing: -0.02em;
+}
+
+.duel__target {
+  margin: 0 0 1.4cqh;
+  font-size: clamp(13px, 3.2cqh, 21px);
+  font-weight: 700;
+}
+.duel__target strong {
+  color: var(--accent);
+  font-size: 1.5em;
+  font-weight: 900;
+}
+
+.challenge-name {
+  width: min(100%, 420px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.8cqh;
+}
+
+.challenge-error {
+  margin: 0;
+  color: var(--accent-hot);
+  font-size: clamp(10px, 2.3cqh, 14px);
+  font-weight: 700;
+}
+
+.challenge-note {
+  margin: 1.4cqh 0 0;
+  max-width: 44ch;
+  font-size: clamp(9px, 2.1cqh, 13px);
+  color: var(--ink-dim);
+  line-height: 1.5;
+}
+
+/* ---- In-play versus HUD -------------------------------------------------- */
+
+.versus {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5cqh;
+  /* The top padding clears the sound toggle, which is absolutely positioned in
+     the same corner at a higher z-index - without it the toggle sits on top of
+     the rival's name and score. */
+  padding: 7.4cqh 2.4cqw 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.stage[data-screen="challengePlaying"] .versus {
+  opacity: 1;
+}
+
+/* The challenge run has its own scoreboard, so the normal single-score HUD
+   would just be a duplicate sitting on top of it. */
+.stage[data-screen="challengePlaying"] .hud {
+  opacity: 0;
+}
+
+.versus__bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1.6cqw;
+  width: 100%;
+  padding: 0.9cqh 2.4cqw;
+  border-radius: 999px;
+  background: rgba(6, 10, 20, 0.72);
+  border: 1px solid var(--stroke);
+  backdrop-filter: blur(4px);
+}
+
+.versus__side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.versus__side--them {
+  text-align: right;
+}
+
+.versus__label {
+  font-size: clamp(8px, 1.9cqh, 12px);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--ink-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.versus__side--them .versus__label {
+  color: var(--ghost);
+}
+
+.versus__score {
+  font-size: clamp(18px, 5cqh, 34px);
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.versus__side--me .versus__score {
+  color: var(--accent);
+}
+.versus__side--them .versus__score {
+  color: var(--ghost);
+}
+
+.versus__vs {
+  font-size: clamp(9px, 2.1cqh, 13px);
+  font-weight: 900;
+  color: var(--ink-dim);
+}
+
+/* The one line that tells the player whether they are winning. */
+.versus__standing {
+  padding: 0.4cqh 2.4cqw;
+  border-radius: 999px;
+  font-size: clamp(9px, 2.3cqh, 14px);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+.versus__standing[data-state="chasing"] {
+  color: var(--ink-dim);
+  background: rgba(6, 10, 20, 0.6);
+  border-color: var(--stroke);
+}
+.versus__standing[data-state="clear"] {
+  color: #ffe6a8;
+  background: rgba(255, 209, 102, 0.14);
+  border-color: rgba(255, 209, 102, 0.4);
+}
+.versus__standing[data-state="level"] {
+  color: var(--accent);
+  background: rgba(255, 209, 102, 0.2);
+  border-color: rgba(255, 209, 102, 0.55);
+}
+.versus__standing[data-state="ahead"] {
+  color: #06231a;
+  background: var(--good);
+  border-color: var(--good);
+  animation: standing-pop 0.3s ease-out;
+}
+
+@keyframes standing-pop {
+  0% { transform: scale(0.86); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+.versus__ghost-note {
+  margin: 0;
+  padding: 0.25cqh 1.6cqw;
+  border-radius: 999px;
+  /* Sits over live gameplay, so it carries its own backdrop rather than
+     relying on whatever happens to be behind it. */
+  background: rgba(6, 10, 20, 0.6);
+  font-size: clamp(7px, 1.7cqh, 10px);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+/* ---- Countdown ----------------------------------------------------------- */
+
+.countdown {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: rgba(6, 10, 20, 0.35);
+}
+.stage[data-screen="challengeCountdown"] .countdown {
+  display: flex;
+}
+
+.countdown__beat {
+  font-size: clamp(64px, 26cqh, 190px);
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  color: var(--ink);
+  text-shadow: 0 8px 40px rgba(0, 0, 0, 0.7);
+  animation: countdown-beat 0.42s ease-out;
+}
+.countdown__beat[data-go="true"] {
+  color: var(--good);
+}
+
+@keyframes countdown-beat {
+  0% { transform: scale(1.7); opacity: 0; }
+  40% { opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* ---- Result -------------------------------------------------------------- */
+
+.verdict {
+  margin: 0;
+  font-size: clamp(28px, 8.5cqh, 62px);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+.verdict[data-verdict="won"] {
+  color: var(--good);
+}
+.verdict[data-verdict="lost"] {
+  color: var(--accent-hot);
+}
+.verdict[data-verdict="tied"] {
+  color: var(--accent);
+}
+
+.verdict__sub {
+  margin: 0.7cqh 0 1.2cqh;
+  font-size: clamp(11px, 2.8cqh, 18px);
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+.pb-badge {
+  display: inline-block;
+  margin-bottom: 1.4cqh;
+  padding: 0.45cqh 2.4cqw;
+  border-radius: 999px;
+  background: linear-gradient(160deg, var(--accent) 0%, #f0a92f 100%);
+  color: #21160a;
+  font-size: clamp(9px, 2.2cqh, 13px);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  box-shadow: 0 4px 0 #b57d1c;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .countdown__beat,
+  .versus__standing[data-state="ahead"] {
+    animation: none;
   }
 }
