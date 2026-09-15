@@ -25,9 +25,10 @@ player can use all three of their tries on three different characters.
 - **Challenge Mode**: race any leaderboard run as a translucent ghost, on the
   exact pipes they flew
 - **Portrait pixel art** at the classic 288x512 arcade scale, upscaled crisply to any screen
-- Zero npm dependencies — `node server.js` and it runs
-- No build step, no bundler, no transpiler
+- Zero npm dependencies for the stall setup — `node server.js` and it runs
+- No build step, no bundler, no transpiler, anywhere
 - Works fully offline (a laptop at a stall with no wifi is a supported setup)
+- Also deploys to Netlify, where one dependency replaces the file-backed store
 - Character art and all audio are swappable files, declared in one manifest
 
 ## Running it
@@ -314,10 +315,78 @@ board left up all day is obviously stale rather than quietly wrong.
   fully playable with sound blocked, muted or missing
 - A hidden tab stops the animation loop and the music
 
+## Two places this runs
+
+The game is built for a stall laptop, and that is still the primary target.
+It also deploys to Netlify unchanged. The difference is only ever storage:
+
+| | Stall (`node server.js`) | Netlify |
+| --- | --- | --- |
+| Static files | served from `./public` | served from `./public` |
+| Leaderboard | `data/leaderboard.json`, atomic tmp+rename | Netlify Blobs |
+| Concurrency | one process, writes serialised through a promise chain | ETag conditional writes with retry |
+| Dependencies | none | `@netlify/blobs` |
+| Character upload | works | refused (a serverless filesystem is read-only) |
+
+Everything that decides what a score is *worth* - the ranking order, the
+best-of-three authority, name sanitising, replay validation - lives in
+[`lib/board.mjs`](lib/board.mjs) and is imported by both. That is deliberate:
+if those rules were duplicated, the same three scores could earn different
+ranks depending on where they were submitted.
+
+### Deploying to Netlify
+
+1. Push the repository to GitHub.
+2. In Netlify, **Add new site -> Import an existing project**, and pick it.
+3. Take the detected settings as they are - [`netlify.toml`](netlify.toml)
+   already sets the publish directory (`public`), the functions directory and
+   the Node version. There is no build step to configure.
+4. Deploy. The API comes up at `/api/*`, backed by Blobs, with an empty board.
+
+To carry existing scores across, set two environment variables locally and run
+the import once:
+
+```bash
+npm run board:import
+```
+
+It needs `NETLIFY_SITE_ID` (Site configuration -> General) and
+`NETLIFY_AUTH_TOKEN` (User settings -> Applications). The import merges on
+entry id, so running it twice cannot duplicate anybody, and a score set on the
+live site is never overwritten by an older local file.
+[`npm run board:export`](tools/board-sync.mjs) is the way back - it pulls the
+hosted board into `data/leaderboard.json` (backing up whatever was there) so
+the stall laptop can start an event from the real standings.
+
+### What to know before making it public
+
+- **The bundled media becomes publicly reachable.** Netlify sites are public on
+  the free tier. Everything in [ASSETS.md](ASSETS.md) applies with more force
+  once the site has a URL: the character photographs and the music are other
+  people's work. Password protection is a paid Netlify feature, so on the free
+  tier the honest options are to replace `public/assets/` with material you own,
+  or to accept that it is published.
+- **Scores are unauthenticated**, exactly as they are at the stall. On a LAN
+  behind a table that is fine; on the open internet anyone can POST a score.
+  The server still recomputes best-of-three and clamps the values, so the worst
+  case is a fake name with a plausible number beside it, not a broken board.
+- **Player names go public.** The board carries the names people typed at the
+  event. Consider whether you want to import them before running
+  `board:import`, or start the hosted board empty.
+- **Audio is the payload.** The `public/assets/audio` directory is the bulk of
+  the site. Music elements use `preload="metadata"` and stream, so a character
+  switch does not block on a whole track, but a long track is still a long
+  download for whoever hears it through. `npm run audio` can re-cut any of them
+  shorter; only the first half minute or so is heard in an attempt.
+
 ## Project layout
 
 ```
-server.js                     Node HTTP server + leaderboard store
+server.js                     Node HTTP server + leaderboard store (the stall)
+lib/board.mjs                 ranking + validation, shared by both backends
+netlify.toml                  hosting config: publish dir, headers, functions
+netlify/functions/api.mjs     the same API on Netlify Blobs
+tools/board-sync.mjs          move the leaderboard between the two
 data/leaderboard.json         persisted scores (created on first submit)
 public/
   index.html                  screen markup
@@ -366,9 +435,14 @@ only module that touches an element.
 
 ## Third-party code
 
-None. All gameplay, rendering, session and leaderboard code here is original
-work written for this project, and the runtime has no dependencies — nothing is
-vendored from another repository, so no third-party licence obligations apply.
+All gameplay, rendering, session and leaderboard code here is original work
+written for this project; nothing is vendored from another repository.
+
+The stall runtime has **no dependencies at all** - `node server.js` needs
+nothing installed. The Netlify deployment has exactly one, `@netlify/blobs`,
+which exists only because a serverless function has no disk to keep a
+leaderboard on. Nothing in `public/` imports it, so the game itself is still
+dependency-free in the browser.
 Public Flappy Bird clones were consulted only for well-known behavioural
 conventions (constant horizontal scroll, impulse-based flap, score on pipe
 pass, rotation tied to vertical velocity); the physics constants here were

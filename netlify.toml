@@ -1,0 +1,65 @@
+# Netlify deployment.
+#
+# The stall setup is unaffected by any of this: `node server.js` still serves
+# the same ./public directory with its own file-backed leaderboard, with no
+# dependencies. This file only describes the hosted copy.
+
+[build]
+  # There is nothing to compile: the game is plain ES modules served as-is.
+  # Netlify installs dependencies itself before running this, so the only job
+  # left is to say so out loud.
+  command = "echo 'No build step - static ES modules, served from ./public'"
+  publish = "public"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# /api/* is claimed by the function's own `config.path` export, so no redirect
+# is needed for it. This only makes the intent visible in one place.
+[functions]
+  node_bundler = "esbuild"
+
+# Long-lived caching for the things that never change within a deploy. The
+# audio files are the bulk of the payload, so this is what keeps a repeat
+# visitor off the network.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# The game shell itself must not be cached, or a redeploy would not reach
+# anyone still holding the old HTML.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/leaderboard.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Source modules change on every deploy and are small; revalidate them.
+[[headers]]
+  for = "/src/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    # The game is self-contained: no third-party scripts, no frames, no
+    # external form posts. Say so, rather than leaving it to the defaults.
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    X-Frame-Options = "SAMEORIGIN"
+
+# The in-browser cutout tool writes through /api/character, which the hosted
+# API refuses (a serverless filesystem is read-only). Keep it off the public
+# site entirely rather than shipping a tool that cannot work.
+[[redirects]]
+  from = "/tools/*"
+  to = "/"
+  status = 302
+  force = true

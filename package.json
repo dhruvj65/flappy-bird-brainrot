@@ -11,7 +11,11 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "audio": "node tools/get-audio.mjs"
+    "audio": "node tools/get-audio.mjs",
+    "board:export": "node tools/board-sync.mjs export",
+    "board:import": "node tools/board-sync.mjs import"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@netlify/blobs": "^11.1.0"
+  }
 }

@@ -121,7 +121,12 @@ export class AudioManager {
     try {
       const sources = Array.isArray(cfg.src) ? cfg.src.slice() : [cfg.src];
       const element = new Audio();
-      element.preload = 'auto';
+      /* Short effects are fully buffered so a flap never lags behind the tap.
+         Music is only asked for its metadata and then streamed: on a LAN the
+         difference is invisible, but over the internet 'auto' would download a
+         whole multi-megabyte track before the character screen could settle,
+         and only the first half minute is ever heard in an attempt. */
+      element.preload = cfg.music ? 'metadata' : 'auto';
       element.volume = clamp01(cfg.volume == null ? 0.6 : cfg.volume);
 
       let index = 0;

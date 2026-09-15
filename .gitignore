@@ -19,3 +19,6 @@ desktop.ini
 *.swp
 .vscode/
 .idea/
+
+# Netlify CLI local state
+.netlify/

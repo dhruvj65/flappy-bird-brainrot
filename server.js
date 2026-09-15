@@ -18,6 +18,18 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+/* Ranking and validation are shared with the Netlify function so the stall
+   laptop and the public site can never disagree about what a score is worth. */
+import {
+  DEFAULT_LIMIT,
+  compareEntries,
+  isUsableEntry,
+  normaliseEntry,
+  rankedTop,
+  resolveLimit,
+  resolveScore,
+  toPublicEntry
+} from './lib/board.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -26,19 +38,12 @@ const DB_FILE = path.join(DATA_DIR, 'leaderboard.json');
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-const MAX_NAME_LENGTH = 14;
-const MAX_SCORE = 100000;
-const MAX_ATTEMPTS = 3;
-const DEFAULT_LIMIT = 25;
-const MAX_LIMIT = 200;
 const MAX_BODY_BYTES = 8 * 1024;
 /* A score submission now carries a Challenge Mode replay, which is a seed plus
    delta-encoded flap steps - small, but bigger than a bare score. The cap is
    generous for a legitimate run (a 3 minute flight is well under 8 KB) and
    still bounded. */
 const MAX_SCORE_BODY_BYTES = 64 * 1024;
-const MAX_REPLAY_BYTES = 24 * 1024;
-const MAX_REPLAY_FLAPS = 20000;
 const MAX_CHARACTER_BYTES = 4 * 1024 * 1024;
 const CHARACTER_DIR = path.join(PUBLIC_DIR, 'assets', 'character');
 /** Only these ids may be written, and the id maps straight to <id>.png. This
@@ -164,9 +169,7 @@ class LeaderboardStore {
   }
 
   top(limit) {
-    return this.entries
-      .slice(0, limit)
-      .map((entry, i) => Object.assign(toPublicEntry(entry), { rank: i + 1 }));
+    return rankedTop(this.entries, limit);
   }
 
   /** The full recording for one entry, or null. */
@@ -192,101 +195,8 @@ class LeaderboardStore {
   }
 }
 
-function compareEntries(a, b) {
-  if (b.score !== a.score) return b.score - a.score;
-  if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
-  return String(a.id).localeCompare(String(b.id));
-}
-
-function isUsableEntry(entry) {
-  return entry && typeof entry === 'object' && Number.isFinite(Number(entry.score));
-}
-
-function normaliseEntry(entry) {
-  const attempts = Array.isArray(entry.attempts)
-    ? entry.attempts.slice(0, MAX_ATTEMPTS).map((n) => clampScore(n))
-    : [];
-  return {
-    id: String(entry.id || crypto.randomUUID()),
-    sessionId: entry.sessionId ? String(entry.sessionId).slice(0, 64) : null,
-    name: sanitiseName(entry.name),
-    score: clampScore(entry.score),
-    attempts,
-    createdAt: Number.isFinite(Number(entry.createdAt)) ? Number(entry.createdAt) : Date.now(),
-    /* Challenge Mode: the recording of this player's best attempt, or null.
-       Entries written before Challenge Mode existed simply have none, which is
-       exactly the "not challengeable" state the client already handles. */
-    replay: sanitiseReplay(entry.replay)
-  };
-}
-
-/**
- * Structural validation of a replay. The client validates it again before
- * running it, so this only has to stop the store filling up with junk: right
- * shape, sane sizes, no nested objects.
- */
-function sanitiseReplay(replay) {
-  if (!replay || typeof replay !== 'object' || Array.isArray(replay)) return null;
-  if (Number(replay.v) !== 1) return null;
-
-  const seed = Number(replay.seed);
-  const steps = Number(replay.steps);
-  if (!Number.isFinite(seed) || !Number.isFinite(steps)) return null;
-  if (steps <= 0 || steps > 120 * 60 * 12) return null;
-
-  if (!Array.isArray(replay.flaps) || replay.flaps.length > MAX_REPLAY_FLAPS) return null;
-  const flaps = [];
-  for (const value of replay.flaps) {
-    const n = Math.floor(Number(value));
-    if (!Number.isFinite(n) || n < 0) return null;
-    flaps.push(n);
-  }
-
-  const clean = {
-    v: 1,
-    seed: seed >>> 0,
-    characterId: String(replay.characterId || '').slice(0, 32),
-    steps: Math.floor(steps),
-    score: clampScore(replay.score),
-    flaps
-  };
-
-  // Final guard on the encoded size, so one huge record cannot bloat the file.
-  if (Buffer.byteLength(JSON.stringify(clean)) > MAX_REPLAY_BYTES) return null;
-  return clean;
-}
-
-/** Board rows never carry replay blobs - only whether one exists. Fetching the
- *  recording itself is a separate request, made only when a challenge starts. */
-function toPublicEntry(entry) {
-  const { replay, ...rest } = entry;
-  return Object.assign(rest, { hasReplay: Boolean(replay) });
-}
-
-function stripControlCharacters(value) {
-  let out = '';
-  for (const ch of value) {
-    const code = ch.codePointAt(0);
-    // C0 controls, DEL and the C1 block: never legitimate in a display name.
-    if (code < 32 || (code >= 127 && code <= 159)) continue;
-    out += ch;
-  }
-  return out;
-}
-
-function sanitiseName(value) {
-  const cleaned = stripControlCharacters(String(value == null ? '' : value))
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, MAX_NAME_LENGTH);
-  return cleaned || 'PLAYER';
-}
-
-function clampScore(value) {
-  const n = Math.floor(Number(value));
-  if (!Number.isFinite(n) || n < 0) return 0;
-  return Math.min(n, MAX_SCORE);
-}
+/* Ranking, name sanitising, score clamping, replay validation and the
+   public-row shape all live in lib/board.mjs - see the import above. */
 
 /* -------------------------------------------------------------------------- */
 /* HTTP plumbing                                                              */
@@ -358,10 +268,7 @@ async function handleApi(req, res, url) {
   }
 
   if (url.pathname === '/api/leaderboard' && req.method === 'GET') {
-    const requested = Number(url.searchParams.get('limit'));
-    const limit = Number.isFinite(requested)
-      ? Math.min(Math.max(Math.floor(requested), 1), MAX_LIMIT)
-      : DEFAULT_LIMIT;
+    const limit = resolveLimit(url.searchParams.get('limit'));
     return sendJson(res, 200, { ok: true, entries: store.top(limit), total: store.entries.length });
   }
 
@@ -424,14 +331,7 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/scores' && req.method === 'POST') {
     const body = await readBody(req, MAX_SCORE_BODY_BYTES);
 
-    const attempts = Array.isArray(body.attempts)
-      ? body.attempts.slice(0, MAX_ATTEMPTS).map(clampScore)
-      : [];
-
-    // The server is the authority on "best of three": when the client sends the
-    // per-attempt scores, the stored score is MAX(attempts) regardless of what
-    // the client claimed the session total was.
-    const score = attempts.length ? Math.max.apply(null, attempts) : clampScore(body.score);
+    const { attempts, score } = resolveScore(body);
 
     if (!Number.isFinite(score)) {
       return sendJson(res, 400, { ok: false, error: 'A numeric score is required.' });
