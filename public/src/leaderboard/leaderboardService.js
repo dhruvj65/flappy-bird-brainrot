@@ -63,7 +63,7 @@ export class LeaderboardService {
    * Submits the session's best score. Safe to call repeatedly with the same
    * sessionId: the same result comes back and no second entry is created.
    */
-  submit({ sessionId, name, score, attempts, replay }) {
+  submit({ sessionId, name, score, attempts, replay, contact }) {
     if (!sessionId) return Promise.reject(new Error('A sessionId is required to submit a score.'));
 
     const cached = this.results[sessionId];
@@ -72,7 +72,7 @@ export class LeaderboardService {
     const existing = this.inflight.get(sessionId);
     if (existing) return existing;
 
-    const promise = this.performSubmit({ sessionId, name, score, attempts, replay }).finally(() => {
+    const promise = this.performSubmit({ sessionId, name, score, attempts, replay, contact }).finally(() => {
       this.inflight.delete(sessionId);
     });
 
@@ -91,6 +91,15 @@ export class LeaderboardService {
        can be challenged later. Omitted entirely when there is nothing to send,
        which keeps an offline queue entry the same size it always was. */
     if (payload.replay) body.replay = payload.replay;
+
+    /* Prize-draw details, flattened onto the body the server already reads.
+       Queued offline submissions carry them too, so a score that lands after
+       the network comes back still registers its player. */
+    if (payload.contact) {
+      body.bitsId = payload.contact.bitsId || '';
+      body.phone = payload.contact.phone || '';
+      body.dialCode = payload.contact.dialCode || '';
+    }
 
     let lastError = null;
     for (let attempt = 0; attempt <= this.config.submitRetries; attempt += 1) {

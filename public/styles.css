@@ -1532,3 +1532,89 @@ body {
     animation: none;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Player entry form
+
+   Three fields now instead of one, so the attract screen has to stay compact:
+   labels shrink, inputs lose a little height, and errors sit inline rather
+   than opening a dialog that would block the queue.
+   -------------------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35cqh;
+}
+
+.name-form__label {
+  text-align: left;
+}
+
+/* Three stacked inputs need less height each than the single one did. */
+.name-form .name-form__input {
+  padding: 1.25cqh 1.4cqw;
+  font-size: clamp(13px, 2.9cqh, 24px);
+}
+
+.field__error {
+  margin: 0;
+  text-align: left;
+  color: var(--accent-hot);
+  font-size: clamp(9px, 2cqh, 13px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.name-form__input[aria-invalid="true"] {
+  border-color: var(--accent-hot);
+  background: rgba(239, 71, 111, 0.1);
+}
+
+/* The dial code is a picker, so the number field never has to carry it. */
+.phone-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1.2cqw;
+  align-items: stretch;
+}
+
+.phone-row__code {
+  padding: 1.25cqh 1cqw;
+  border-radius: 14px;
+  border: 2px solid var(--stroke);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  font: inherit;
+  font-size: clamp(12px, 2.7cqh, 22px);
+  font-weight: 700;
+  cursor: pointer;
+  /* Native option lists render in the OS palette; force a dark one so the
+     open dropdown does not flash white over the arcade screen. */
+  color-scheme: dark;
+}
+
+.phone-row__number {
+  /* Digits only: uppercase transform and wide letter spacing hurt legibility
+     for a phone number in a way they do not for a short name. */
+  text-transform: none;
+  letter-spacing: 0.1em;
+  text-align: left;
+}
+
+.name-form__note {
+  margin: 0.2cqh 0 0;
+  text-align: left;
+  font-size: clamp(8px, 1.9cqh, 12px);
+  line-height: 1.45;
+  color: var(--ink-dim);
+  opacity: 0.8;
+}
+
+/* Short screens: the how-to list is the least load-bearing thing here, so it
+   is what gives way before the form starts scrolling. */
+@media (max-height: 760px) {
+  .screen--attract .how-to {
+    display: none;
+  }
+}

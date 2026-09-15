@@ -227,14 +227,16 @@ async function handleChooseCharacter(id) {
   session.chooseCharacter(id);
 }
 
-function handleStart(rawName) {
+/** `entry` is the validated form record from the screen controller. */
+function handleStart(entry) {
   clearGameOverTimer();
   /* Unlock here so the browser's autoplay gate is already open by the time the
      player taps to fly. The music itself does not start until that tap - the
      name-entry and "tap to fly" screens stay quiet. */
   audio.unlock();
 
-  session.startSession(normaliseName(rawName));
+  const record = typeof entry === 'string' ? { name: entry } : entry || {};
+  session.startSession({ ...record, name: normaliseName(record.name) });
 }
 
 function handleContinue() {
@@ -417,7 +419,10 @@ async function runSubmission() {
       name: snapshot.playerName,
       score: snapshot.bestScore,
       attempts: snapshot.scores,
-      replay: bestAttemptReplay(snapshot)
+      replay: bestAttemptReplay(snapshot),
+      /* For the hourly prize draw. The server writes these to the register
+         only - they never enter the leaderboard store. */
+      contact: snapshot.contact
     });
   } catch (err) {
     result = {

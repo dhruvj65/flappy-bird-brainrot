@@ -20,8 +20,10 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 /* Ranking and validation are shared with the Netlify function so the stall
    laptop and the public site can never disagree about what a score is worth. */
+import { RegistrationLog, mirrorToSheet } from './lib/registrations.mjs';
 import {
   DEFAULT_LIMIT,
+  validateContact,
   compareEntries,
   isUsableEntry,
   normaliseEntry,
@@ -35,6 +37,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'leaderboard.json');
+/* The prize-draw register. Kept apart from the leaderboard so contact details
+   can never reach a public API response - see lib/registrations.mjs. */
+const REGISTER_FILE = path.join(DATA_DIR, 'registrations.csv');
+/* Optional Google Sheets mirror (an Apps Script web app URL). Unset = off. */
+const SHEET_URL = process.env.FLAPPY_SHEET_URL || '';
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
@@ -203,6 +210,7 @@ class LeaderboardStore {
 /* -------------------------------------------------------------------------- */
 
 const store = new LeaderboardStore(DB_FILE);
+const register = new RegistrationLog(REGISTER_FILE);
 
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
@@ -263,6 +271,8 @@ async function handleApi(req, res, url) {
       ok: true,
       entries: store.entries.length,
       replays: store.entries.reduce((n, e) => n + (e.replay ? 1 : 0), 0),
+      registrations: await register.count(),
+      sheetMirror: SHEET_URL ? 'on' : 'off',
       uptime: Math.round(process.uptime())
     });
   }
@@ -344,6 +354,36 @@ async function handleApi(req, res, url) {
       attempts,
       replay: body.replay
     });
+
+    /* Register the player for the hourly prize draw, once per session. A
+       duplicate submission (double click, refresh, retry after a timeout) must
+       not enter anybody into the draw twice. */
+    if (!result.duplicate) {
+      const contact = validateContact({
+        name: body.name,
+        bitsId: body.bitsId,
+        dialCode: body.dialCode,
+        phone: body.phone
+      });
+
+      /* Written even when the details are incomplete. The score is real and
+         already on the board; dropping the row would quietly make that player
+         ineligible for a prize with nobody noticing. A blank cell is visible
+         in the sheet and can be chased. */
+      const row = {
+        name: result.entry.name,
+        bitsId: contact.contact.bitsId,
+        phone: contact.contact.phone,
+        score: result.entry.score,
+        attempts: result.entry.attempts,
+        sessionId: result.entry.sessionId,
+        at: new Date(result.entry.createdAt)
+      };
+
+      register.append(row);
+      // Fire and forget: the sheet is a mirror, the CSV on disk is the record.
+      if (SHEET_URL) mirrorToSheet(SHEET_URL, row).catch(() => {});
+    }
 
     return sendJson(res, result.duplicate ? 200 : 201, {
       ok: true,
@@ -457,11 +497,14 @@ function localAddresses() {
 }
 
 const count = await store.load();
+const registered = await register.init();
 
 server.listen(PORT, HOST, () => {
   console.log('');
   console.log('  FLAPPY FEST  -  stall server running');
   console.log('  leaderboard : ' + DB_FILE + ' (' + count + ' entries loaded)');
+  console.log('  prize draw  : ' + REGISTER_FILE + ' (' + registered + ' registered)');
+  if (SHEET_URL) console.log('  sheet mirror: on');
   console.log('  local       : http://localhost:' + PORT);
   for (const address of localAddresses()) {
     console.log('  network     : http://' + address + ':' + PORT);

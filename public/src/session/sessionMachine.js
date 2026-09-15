@@ -99,6 +99,7 @@ export class SessionMachine {
       state: this.state,
       sessionId: this.sessionId,
       playerName: this.playerName,
+      contact: { ...this.contact },
       characterId: this.characterId,
       scores: this.scores.slice(),
       liveScore: this.liveScore,
@@ -134,6 +135,10 @@ export class SessionMachine {
     this.state = STATE.ATTRACT;
     this.sessionId = null;
     this.playerName = '';
+    /* Prize-draw contact details. Carried through the session so a submission
+       can register the player, and deliberately never shown on any screen or
+       returned by any leaderboard call. */
+    this.contact = { bitsId: '', phone: '', dialCode: '' };
     this.characterId = DEFAULT_VARIANT;
     this.scores = [];
     this.liveScore = 0;
@@ -143,10 +148,24 @@ export class SessionMachine {
   }
 
   /** Starts a brand new player session. Always safe to call. */
-  startSession(playerName) {
+  /**
+   * Starts a player session.
+   *
+   * `entry` is the validated form record: { name, bitsId, phone, dialCode }.
+   * A bare string is still accepted so nothing that only knows about names
+   * has to change.
+   */
+  startSession(entry) {
+    const record = typeof entry === 'string' ? { name: entry } : entry || {};
     this.clear();
     this.sessionId = createId();
-    this.playerName = String(playerName || '').trim().slice(0, RULES.maxNameLength) || 'PLAYER';
+    this.playerName =
+      String(record.name || '').trim().slice(0, RULES.maxNameLength) || 'PLAYER';
+    this.contact = {
+      bitsId: String(record.bitsId || ''),
+      phone: String(record.phone || ''),
+      dialCode: String(record.dialCode || '')
+    };
     this.startedAt = Date.now();
     this.state = STATE.ATTRACT;
     this.transition(STATE.SELECT);
@@ -237,6 +256,9 @@ export class SessionMachine {
           v: PERSIST_VERSION,
           sessionId: this.sessionId,
           playerName: this.playerName,
+          /* Kept so a refresh mid-session still submits a registrable entry.
+             Wiped with the rest of the session on handover. */
+          contact: this.contact,
           characterId: this.characterId,
           scores: this.scores,
           liveScore: this.liveScore,
@@ -293,6 +315,12 @@ export class SessionMachine {
 
     this.sessionId = String(data.sessionId);
     this.playerName = String(data.playerName || 'PLAYER').slice(0, RULES.maxNameLength);
+    const saved = data.contact && typeof data.contact === 'object' ? data.contact : {};
+    this.contact = {
+      bitsId: String(saved.bitsId || ''),
+      phone: String(saved.phone || ''),
+      dialCode: String(saved.dialCode || '')
+    };
     this.characterId = VARIANTS[data.characterId] ? data.characterId : DEFAULT_VARIANT;
     this.scores = data.scores
       .slice(0, RULES.attemptsPerSession)

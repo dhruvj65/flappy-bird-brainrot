@@ -293,6 +293,69 @@ board stays small. The ghost costs one extra `World.update` per fixed step and
 one pre-tinted blit per frame; its pipes are never drawn, because they are the
 same pipes the live player already has on screen.
 
+## The hourly prize draw
+
+Players enter a name, a BITS ID and a WhatsApp number before their three
+attempts. Every finished session appends one row to `data/registrations.csv`,
+which is what the hourly winner is drawn from.
+
+### Picking a winner
+
+```bash
+npm run winners -- now     the hour in progress, ready to read out
+npm run winners            every hour so far
+npm run winners -- csv     the same table as CSV
+```
+
+`-- now` prints the name, BITS ID, number and score of whoever currently leads
+this hour, plus how many people have played in it. Ties go to whoever got there
+first, the same rule the leaderboard uses.
+
+### Where the details go, and where they do not
+
+Contact details are **never** written to `data/leaderboard.json` and are never
+returned by any API. They are not omitted from responses - they are not in that
+store at all, so no endpoint can leak one by accident. The public board and the
+second screen show a name and a score, exactly as before.
+
+`data/registrations.csv` is gitignored. It holds real phone numbers, so keep it
+off shared drives and delete it once the prizes are handed out.
+
+### The CSV
+
+| Column | |
+| --- | --- |
+| `submittedAt` | ISO timestamp, for sorting |
+| `localTime` | the same moment in the stall's timezone |
+| `hourBucket` | e.g. `2026-09-16 15:00` - group by this to find hourly winners |
+| `name`, `bitsId`, `phone` | as entered, normalised |
+| `score` | best of the three attempts |
+| `attempt1..3` | the individual runs |
+| `sessionId` | joins the row to its leaderboard entry |
+
+It opens straight in Excel. Two details worth knowing:
+
+- The file starts with a UTF-8 BOM, without which Excel mangles non-ASCII names.
+- Cells beginning `=`, `+`, `-` or `@` are written with a leading apostrophe.
+  Names are typed by strangers, and `=cmd|...` in a cell is a live formula when
+  Excel opens it. The apostrophe is not shown in the cell and is stripped again
+  by `npm run winners`. It is also why a phone number keeps its `+` instead of
+  being read as a subtraction.
+
+### Mirroring into Google Sheets (optional)
+
+For a sheet other people can watch live, follow the instructions at the top of
+[`tools/google-apps-script.js`](tools/google-apps-script.js): paste it into a
+Sheet's Apps Script, deploy as a web app, then start the server with the URL.
+
+```bash
+FLAPPY_SHEET_URL="https://script.google.com/.../exec" node server.js
+```
+
+The boot banner prints `sheet mirror: on` when it is set. The CSV stays the
+record: a slow or failed sheet write is logged and ignored, never surfaced to
+the player and never able to lose a row.
+
 ## The leaderboard screen
 
 **<http://localhost:3000/leaderboard.html>** is a standalone page meant for a
@@ -384,6 +447,10 @@ the stall laptop can start an event from the real standings.
 ```
 server.js                     Node HTTP server + leaderboard store (the stall)
 lib/board.mjs                 ranking + validation, shared by both backends
+lib/registrations.mjs         the prize-draw CSV writer
+data/registrations.csv        who played, how to reach them (gitignored)
+tools/winners.mjs             hourly winners, for announcing
+tools/google-apps-script.js   optional Google Sheets mirror
 netlify.toml                  hosting config: publish dir, headers, functions
 netlify/functions/api.mjs     the same API on Netlify Blobs
 tools/board-sync.mjs          move the leaderboard between the two
@@ -407,6 +474,7 @@ public/
     game/engine.js            fixed-timestep loop
     game/input.js             pointer/keyboard, attach/detach
     session/sessionMachine.js the three-attempt rules
+    shared/contact.js         name / BITS ID / phone rules, shared with the server
     challenge/replay.js       recording + ghost playback
     challenge/challengeController.js  the rules of a duel
     leaderboard/leaderboardService.js  API, dedupe, offline queue

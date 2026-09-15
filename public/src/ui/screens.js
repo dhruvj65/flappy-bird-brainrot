@@ -11,6 +11,7 @@ import { RULES, CHALLENGE } from '../config.js';
 import { STATE } from '../session/sessionMachine.js';
 import { ROSTER, getVariant } from '../assets/manifest.js';
 import { STANDING, VERDICT } from '../challenge/challengeController.js';
+import { DIAL_CODES, validateContact } from '../shared/contact.js';
 
 const BUTTON_LOCK_MS = 450;
 
@@ -27,6 +28,12 @@ export class ScreenController {
       attractTagline: document.getElementById('attractTagline'),
       nameForm: document.getElementById('nameForm'),
       playerName: document.getElementById('playerName'),
+      playerNameError: document.getElementById('playerNameError'),
+      bitsId: document.getElementById('bitsId'),
+      bitsIdError: document.getElementById('bitsIdError'),
+      dialCode: document.getElementById('dialCode'),
+      playerPhone: document.getElementById('playerPhone'),
+      playerPhoneError: document.getElementById('playerPhoneError'),
       startButton: document.getElementById('startButton'),
       miniBoardList: document.getElementById('miniBoardList'),
 
@@ -98,6 +105,7 @@ export class ScreenController {
     this.toastTimer = 0;
     this.locks = new WeakMap();
 
+    this.buildDialCodes();
     this.buildRoster();
     this.buildPips(this.el.selectPips);
     this.buildPips(this.el.hudPips);
@@ -114,10 +122,22 @@ export class ScreenController {
     this.onSubmitName = (event) => {
       event.preventDefault();
       if (this.isLocked(this.el.startButton)) return;
+
+      const entry = this.readEntry();
+      /* Every bad field is marked at once. Making somebody fix one, press
+         START, and discover the next is the wrong shape for a queue. */
+      if (!entry.ok) {
+        this.showEntryErrors(entry.errors);
+        this.focusFirstError(entry.errors);
+        return;
+      }
+
+      this.showEntryErrors({});
       this.lock(this.el.startButton);
-      const name = this.el.playerName.value;
       this.el.playerName.blur();
-      this.call('onStart', name);
+      this.el.bitsId.blur();
+      this.el.playerPhone.blur();
+      this.call('onStart', entry.contact);
     };
 
     this.onContinue = () => {
@@ -257,7 +277,68 @@ export class ScreenController {
     this.unlockAll();
     this.lastHudScore = null;
     this.el.hudScore.textContent = '0';
+    // A handover must not leave the previous player's details on screen.
+    this.clearEntry();
+  }
+
+  /** Fills the country-code picker from the shared list. */
+  buildDialCodes() {
+    const select = this.el.dialCode;
+    if (!select) return;
+    const fragment = document.createDocumentFragment();
+    for (const entry of DIAL_CODES) {
+      const option = document.createElement('option');
+      option.value = entry.code;
+      option.textContent = entry.code;
+      option.title = entry.label;
+      fragment.appendChild(option);
+    }
+    select.replaceChildren(fragment);
+    select.value = DIAL_CODES[0].code;
+  }
+
+  /** Reads and validates the three entry fields in one pass. */
+  readEntry() {
+    return validateContact({
+      name: this.el.playerName.value,
+      bitsId: this.el.bitsId.value,
+      dialCode: this.el.dialCode.value,
+      phone: this.el.playerPhone.value
+    });
+  }
+
+  showEntryErrors(errors) {
+    const pairs = [
+      ['name', this.el.playerName, this.el.playerNameError],
+      ['bitsId', this.el.bitsId, this.el.bitsIdError],
+      ['phone', this.el.playerPhone, this.el.playerPhoneError]
+    ];
+    for (const [key, input, output] of pairs) {
+      const message = errors[key] || '';
+      output.textContent = message;
+      output.hidden = !message;
+      if (message) input.setAttribute('aria-invalid', 'true');
+      else input.removeAttribute('aria-invalid');
+    }
+  }
+
+  focusFirstError(errors) {
+    const first =
+      (errors.name && this.el.playerName) ||
+      (errors.bitsId && this.el.bitsId) ||
+      (errors.phone && this.el.playerPhone);
+    if (first) {
+      try { first.focus({ preventScroll: false }); } catch { /* ignore */ }
+    }
+  }
+
+  /** Clears the whole form, for the next player in the queue. */
+  clearEntry() {
     this.el.playerName.value = '';
+    this.el.bitsId.value = '';
+    this.el.playerPhone.value = '';
+    if (this.el.dialCode) this.el.dialCode.value = DIAL_CODES[0].code;
+    this.showEntryErrors({});
   }
 
   /**

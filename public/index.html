@@ -65,9 +65,9 @@
               </h1>
               <p class="tagline" id="attractTagline">Three tries. One legend.</p>
 
-              <form class="name-form" id="nameForm" autocomplete="off">
-                <label class="name-form__label" for="playerName">Your name for the leaderboard</label>
-                <div class="name-form__row">
+              <form class="name-form" id="nameForm" autocomplete="off" novalidate>
+                <div class="field">
+                  <label class="name-form__label" for="playerName">Name</label>
                   <input
                     class="name-form__input"
                     id="playerName"
@@ -78,9 +78,57 @@
                     autocomplete="off"
                     autocapitalize="characters"
                     spellcheck="false"
+                    aria-describedby="playerNameError"
                   />
-                  <button class="btn btn--primary btn--jumbo" id="startButton" type="submit">START</button>
+                  <p class="field__error" id="playerNameError" role="alert" hidden></p>
                 </div>
+
+                <div class="field">
+                  <label class="name-form__label" for="bitsId">BITS ID</label>
+                  <input
+                    class="name-form__input"
+                    id="bitsId"
+                    name="bitsId"
+                    type="text"
+                    maxlength="20"
+                    placeholder="F20230000"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    spellcheck="false"
+                    aria-describedby="bitsIdError"
+                  />
+                  <p class="field__error" id="bitsIdError" role="alert" hidden></p>
+                </div>
+
+                <div class="field">
+                  <label class="name-form__label" for="playerPhone">WhatsApp number</label>
+                  <div class="phone-row">
+                    <!-- A picker rather than a typed code: a bare ten digit
+                         number is ambiguous between +971 and +91, and a wrong
+                         guess means a prize never reaches anyone. -->
+                    <select class="phone-row__code" id="dialCode" aria-label="Country code"></select>
+                    <input
+                      class="name-form__input phone-row__number"
+                      id="playerPhone"
+                      name="playerPhone"
+                      type="tel"
+                      inputmode="numeric"
+                      maxlength="15"
+                      placeholder="50 123 4567"
+                      autocomplete="off"
+                      spellcheck="false"
+                      aria-describedby="playerPhoneError"
+                    />
+                  </div>
+                  <p class="field__error" id="playerPhoneError" role="alert" hidden></p>
+                </div>
+
+                <button class="btn btn--primary btn--jumbo" id="startButton" type="submit">START</button>
+
+                <p class="name-form__note">
+                  Your ID and number are only used to contact the hourly winner.
+                  The leaderboard shows your name and score, nothing else.
+                </p>
               </form>
 
               <ul class="how-to">
