@@ -413,6 +413,11 @@ async function handleApi(req, res, url) {
          wait on a spreadsheet. */
       register.append(row);
       sheet.send(row).catch(() => {});
+      /* Refresh the spreadsheets a few seconds behind this. The hourly tick
+         alone leaves the folder stale for up to an hour, and somebody watching
+         it expects a player to appear after they play. Repeated calls collapse
+         into one write. */
+      hourly.requestExport();
     }
 
     return sendJson(res, result.duplicate ? 200 : 201, {

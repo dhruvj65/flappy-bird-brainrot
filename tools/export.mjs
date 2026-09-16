@@ -46,9 +46,11 @@ console.log('    hourly-winners.csv    ' + result.hours + ' hour(s)');
 if (result.hourFiles) console.log("    hour-<...>.csv        " + result.hourFiles + " completed hour(s)");
 else console.log('    (no completed hours yet - the current hour is still running)');
 if (result.notes && result.notes.length) for (const n of result.notes) console.log('    note: ' + n);
+if (result.failed && result.failed.length) console.log('  FAILED: ' + result.failed.join(', '));
 if (result.locked && result.locked.length) {
   console.log('');
-  console.log('  LOCKED, not updated: ' + result.locked.join(', '));
-  console.log('  Close them in Excel and run this again.');
+  console.log('  OPEN IN EXCEL: ' + result.locked.join(', '));
+  console.log('  Current data is in the matching "(LOCKED - latest)" file.');
+  console.log('  Close them in Excel and the originals catch up by themselves.');
 }
 console.log('');

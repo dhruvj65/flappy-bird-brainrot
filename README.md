@@ -361,13 +361,26 @@ The per-hour file is the one to open when announcing: only the people who
 played in that hour, sorted by score, winner flagged in the first column.
 Nothing to filter while a crowd waits.
 
-`npm run export` writes them immediately instead of waiting for the hour, and
-takes an optional folder: `npm run export -- "D:\somewhere\else"`.
+The files are also refreshed a few seconds after anybody registers, so the
+folder tracks the event rather than sitting up to an hour stale. A rush of
+people finishing together collapses into one write.
 
-The schedule is aligned to the clock, not to startup - a server started at
-14:37 still exports at 15:00, not 15:37. A file is written for every completed
-hour rather than only the last one, so a restart across a boundary does not
-leave a hole, and one `npm run export` after the event produces the full set.
+`npm run export` writes them immediately, and takes an optional folder:
+`npm run export -- "D:\somewhere\else"`.
+
+The schedule follows the **local** clock, not an interval from startup - a
+server started at 14:37 exports at 15:00, not 15:37. Each tick re-derives the
+delay, so it stays on the hour rather than drifting. A file is written for every
+completed hour rather than only the last one, so a restart across a boundary
+does not leave a hole, and one `npm run export` after the event produces the
+full set.
+
+**If you leave a file open in Excel**, Excel takes an exclusive lock and nothing
+can write to it - not even an overwrite. Rather than let the data quietly go
+stale, the export parks it next to the original as
+`registrations (LOCKED - latest).csv`. Close the original and the next export
+updates it and deletes the stand-in. The boot banner, `/api/health` and
+`npm run export` all say when a file is locked.
 
 These are **derived files**. `data/registrations.csv` is the record and they
 are regenerated from it every time, so a stale export, a file left open in
