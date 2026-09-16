@@ -18,6 +18,7 @@ import path from 'node:path';
 import os from 'node:os';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { loadLocalEnv } from './lib/localEnv.mjs';
 /* Ranking and validation are shared with the Netlify function so the stall
    laptop and the public site can never disagree about what a score is worth. */
 import { RegistrationLog } from './lib/registrations.mjs';
@@ -35,6 +36,11 @@ import {
 } from './lib/board.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+/* Local, gitignored settings (the Sheet URL and token live here so they are
+   not committed and not retyped on every restart). Loaded before anything
+   below reads process.env. */
+const localEnvCount = loadLocalEnv(path.join(__dirname, '.env.local'));
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DATA_DIR = path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'leaderboard.json');
@@ -519,6 +525,7 @@ server.listen(PORT, HOST, () => {
   console.log('  FLAPPY FEST  -  stall server running');
   console.log('  leaderboard : ' + DB_FILE + ' (' + count + ' entries loaded)');
   console.log('  prize draw  : ' + REGISTER_FILE + ' (' + registered + ' registered)');
+  if (localEnvCount) console.log('  settings    : .env.local (' + localEnvCount + ' value(s))');
   if (sheet.enabled) {
     console.log('  google sheet: ' + sheet.describe());
   } else {

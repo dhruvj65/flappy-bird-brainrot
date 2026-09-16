@@ -360,12 +360,20 @@ npm run sheet:test -- "https://script.google.com/.../exec"
 That proves the round trip and names the specific misconfiguration if it fails
 (the usual one is the deployment not being shared with "Anyone"). Then:
 
-```bash
-# PowerShell
-$env:FLAPPY_SHEET_URL="https://script.google.com/.../exec"
-$env:FLAPPY_SHEET_TOKEN="a-secret-you-choose"
-node server.js
+Then put the URL in `.env.local` (gitignored, created from
+[`.env.local.example`](.env.local.example)) so it survives restarts:
+
 ```
+FLAPPY_SHEET_URL=https://script.google.com/.../exec
+FLAPPY_SHEET_TOKEN=a-secret-you-choose
+```
+
+`node server.js` picks it up; the boot banner prints `google sheet: on`. A real
+environment variable still overrides the file for a one-off run.
+
+**The URL is effectively a password** - anyone holding it can append rows to the
+Sheet. That is why it lives in a gitignored file and not in `launch.json` or
+`netlify.toml`, both of which are committed.
 
 `FLAPPY_SHEET_TOKEN` is optional and matches `SHARED_TOKEN` at the top of the
 script. The web app has to accept requests from anyone (the laptop is not

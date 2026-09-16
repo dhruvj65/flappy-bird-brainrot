@@ -26,3 +26,6 @@ desktop.ini
 # Prize-draw register: real names, BITS IDs and phone numbers.
 data/*.csv
 data/sheet-queue.json
+
+# Local settings: the Sheet URL is effectively a password.
+.env.local
