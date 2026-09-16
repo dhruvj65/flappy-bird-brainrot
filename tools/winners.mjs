@@ -52,13 +52,21 @@ function printTable(rows) {
     pad('WHATSAPP', 17) + pad('SCORE', 7) + 'PLAYERS'
   );
   console.log('  ' + '-'.repeat(78));
+  let unreachable = 0;
   for (const row of rows) {
+    if (!row.winner.hasContact) unreachable += 1;
     console.log(
       '  ' + pad(row.hour, 18) + pad(row.winner.name, 16) + pad(row.winner.bitsId || '-', 14) +
-      pad(row.winner.phone || '-', 17) + pad(row.winner.score, 7) + row.played
+      pad(row.winner.phone || '-', 17) + pad(row.winner.score, 7) + row.played +
+      (row.winner.hasContact ? '' : '   <-- NO CONTACT')
     );
   }
   console.log('');
+  if (unreachable) {
+    console.log('  ' + unreachable + ' winner(s) left no contact details and cannot be reached.');
+    console.log('  Announce the next-highest scorer for those hours instead.');
+    console.log('');
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -86,7 +94,21 @@ if (mode === 'csv') {
     console.log('  WhatsApp  ' + (row.winner.phone || '-'));
     console.log('  Score     ' + row.winner.score);
     console.log('  Played    ' + row.played + ' this hour');
-    console.log('  At        ' + row.winner.time + '\n');
+    console.log('  At        ' + row.winner.time);
+    if (!row.winner.hasContact) {
+      console.log('');
+      console.log('  WARNING: this player left no contact details.');
+      const others = entries
+        .filter((e) => e.hour === row.hour && e.sessionId !== row.winner.sessionId && e.hasContact)
+        .sort((a, b) => b.score - a.score || a.iso.localeCompare(b.iso));
+      if (others.length) {
+        console.log('  Next reachable: ' + others[0].name + '  ' + others[0].phone +
+          '  (score ' + others[0].score + ')');
+      } else {
+        console.log('  Nobody else this hour left contact details either.');
+      }
+    }
+    console.log('');
   }
 } else {
   printTable(all);

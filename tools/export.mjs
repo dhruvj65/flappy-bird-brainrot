@@ -45,4 +45,10 @@ console.log('    registrations.csv     ' + result.entries + ' session(s)');
 console.log('    hourly-winners.csv    ' + result.hours + ' hour(s)');
 if (result.hourFiles) console.log("    hour-<...>.csv        " + result.hourFiles + " completed hour(s)");
 else console.log('    (no completed hours yet - the current hour is still running)');
+if (result.notes && result.notes.length) for (const n of result.notes) console.log('    note: ' + n);
+if (result.locked && result.locked.length) {
+  console.log('');
+  console.log('  LOCKED, not updated: ' + result.locked.join(', '));
+  console.log('  Close them in Excel and run this again.');
+}
 console.log('');
