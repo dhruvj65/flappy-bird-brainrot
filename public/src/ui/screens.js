@@ -507,8 +507,18 @@ export class ScreenController {
 
   renderMiniBoard(entries) {
     const list = this.el.miniBoardList;
+
+    /* Hidden unless at least one row can actually be raced. An empty board
+       said "Be the first on the board!" and "Tap a rival to race their ghost"
+       at the same time. */
+    const showHint = (on) => {
+      const hint = document.querySelector('.mini-board__hint');
+      if (hint) hint.hidden = !on;
+    };
+
     if (!entries || !entries.length) {
       list.replaceChildren(el('li', 'mini-board__empty', 'Be the first on the board!'));
+      showHint(false);
       return;
     }
 
@@ -538,10 +548,8 @@ export class ScreenController {
     }
     list.replaceChildren(fragment);
 
-    /* Early in an event nothing has a recording yet, so the hint would be
-       pointing at buttons that are not there. */
-    const hint = document.querySelector('.mini-board__hint');
-    if (hint) hint.hidden = !list.querySelector('.mini-board__challenge');
+    // Early in an event nothing has a recording yet, so there is nothing to tap.
+    showHint(Boolean(list.querySelector('.mini-board__challenge')));
 
     // One delegated listener for the whole list, bound once.
     if (!this.miniBoardBound) {
