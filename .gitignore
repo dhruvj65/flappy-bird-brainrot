@@ -25,3 +25,4 @@ desktop.ini
 
 # Prize-draw register: real names, BITS IDs and phone numbers.
 data/*.csv
+data/sheet-queue.json

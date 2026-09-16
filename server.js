@@ -20,7 +20,8 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 /* Ranking and validation are shared with the Netlify function so the stall
    laptop and the public site can never disagree about what a score is worth. */
-import { RegistrationLog, mirrorToSheet } from './lib/registrations.mjs';
+import { RegistrationLog } from './lib/registrations.mjs';
+import { SheetMirror } from './lib/sheetMirror.mjs';
 import {
   DEFAULT_LIMIT,
   validateContact,
@@ -40,8 +41,12 @@ const DB_FILE = path.join(DATA_DIR, 'leaderboard.json');
 /* The prize-draw register. Kept apart from the leaderboard so contact details
    can never reach a public API response - see lib/registrations.mjs. */
 const REGISTER_FILE = path.join(DATA_DIR, 'registrations.csv');
-/* Optional Google Sheets mirror (an Apps Script web app URL). Unset = off. */
+/* Google Sheets. FLAPPY_SHEET_URL is an Apps Script web app URL; unset = off.
+   FLAPPY_SHEET_TOKEN is an optional shared secret the script checks. */
 const SHEET_URL = process.env.FLAPPY_SHEET_URL || '';
+const SHEET_TOKEN = process.env.FLAPPY_SHEET_TOKEN || '';
+/* Rows that could not be sent wait here until the network comes back. */
+const SHEET_QUEUE_FILE = path.join(DATA_DIR, 'sheet-queue.json');
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
@@ -211,6 +216,11 @@ class LeaderboardStore {
 
 const store = new LeaderboardStore(DB_FILE);
 const register = new RegistrationLog(REGISTER_FILE);
+const sheet = new SheetMirror({
+  url: SHEET_URL,
+  token: SHEET_TOKEN,
+  queueFile: SHEET_QUEUE_FILE
+});
 
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
@@ -272,7 +282,8 @@ async function handleApi(req, res, url) {
       entries: store.entries.length,
       replays: store.entries.reduce((n, e) => n + (e.replay ? 1 : 0), 0),
       registrations: await register.count(),
-      sheetMirror: SHEET_URL ? 'on' : 'off',
+      sheet: sheet.describe(),
+      sheetQueued: sheet.queue.length,
       uptime: Math.round(process.uptime())
     });
   }
@@ -380,9 +391,12 @@ async function handleApi(req, res, url) {
         at: new Date(result.entry.createdAt)
       };
 
+      /* Both, independently. The CSV is a local append that cannot fail for
+         network reasons; the Sheet is what gets read during the event. Neither
+         is awaited - the player's score is already on the board and must not
+         wait on a spreadsheet. */
       register.append(row);
-      // Fire and forget: the sheet is a mirror, the CSV on disk is the record.
-      if (SHEET_URL) mirrorToSheet(SHEET_URL, row).catch(() => {});
+      sheet.send(row).catch(() => {});
     }
 
     return sendJson(res, result.duplicate ? 200 : 201, {
@@ -498,13 +512,19 @@ function localAddresses() {
 
 const count = await store.load();
 const registered = await register.init();
+const queued = await sheet.start();
 
 server.listen(PORT, HOST, () => {
   console.log('');
   console.log('  FLAPPY FEST  -  stall server running');
   console.log('  leaderboard : ' + DB_FILE + ' (' + count + ' entries loaded)');
   console.log('  prize draw  : ' + REGISTER_FILE + ' (' + registered + ' registered)');
-  if (SHEET_URL) console.log('  sheet mirror: on');
+  if (sheet.enabled) {
+    console.log('  google sheet: ' + sheet.describe());
+  } else {
+    console.log('  google sheet: off (set FLAPPY_SHEET_URL to enable)');
+  }
+  if (queued) console.log('  ' + queued + ' row(s) queued from a previous run - retrying');
   console.log('  local       : http://localhost:' + PORT);
   for (const address of localAddresses()) {
     console.log('  network     : http://' + address + ':' + PORT);

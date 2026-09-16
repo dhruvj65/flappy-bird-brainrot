@@ -342,19 +342,53 @@ It opens straight in Excel. Two details worth knowing:
   by `npm run winners`. It is also why a phone number keeps its `+` instead of
   being read as a subtraction.
 
-### Mirroring into Google Sheets (optional)
+### Google Sheets
 
-For a sheet other people can watch live, follow the instructions at the top of
-[`tools/google-apps-script.js`](tools/google-apps-script.js): paste it into a
-Sheet's Apps Script, deploy as a web app, then start the server with the URL.
+The Sheet is meant to be the thing you actually work from during the event. It
+keeps two tabs: **Registrations** (a row per finished session) and **Winners**
+(the top score in each hour, rebuilt on every write). You read the hourly winner
+straight off the Sheet without touching the laptop.
+
+Setup is in the header of
+[`tools/google-apps-script.js`](tools/google-apps-script.js) - paste it into a
+Sheet's Apps Script and deploy as a web app. Then, before the event:
 
 ```bash
-FLAPPY_SHEET_URL="https://script.google.com/.../exec" node server.js
+npm run sheet:test -- "https://script.google.com/.../exec"
 ```
 
-The boot banner prints `sheet mirror: on` when it is set. The CSV stays the
-record: a slow or failed sheet write is logged and ignored, never surfaced to
-the player and never able to lose a row.
+That proves the round trip and names the specific misconfiguration if it fails
+(the usual one is the deployment not being shared with "Anyone"). Then:
+
+```bash
+# PowerShell
+$env:FLAPPY_SHEET_URL="https://script.google.com/.../exec"
+$env:FLAPPY_SHEET_TOKEN="a-secret-you-choose"
+node server.js
+```
+
+`FLAPPY_SHEET_TOKEN` is optional and matches `SHARED_TOKEN` at the top of the
+script. The web app has to accept requests from anyone (the laptop is not
+signed in to your Google account), so without a token the URL is the only thing
+stopping a stranger who finds it from pushing junk rows.
+
+| Command | |
+| --- | --- |
+| `npm run sheet:test` | check the connection |
+| `npm run sheet:backfill` | push existing CSV rows into the Sheet |
+| `npm run sheet:queue` | list rows waiting for the network |
+| `npm run sheet:flush` | send those rows now |
+
+**Why the CSV still exists.** Event wifi drops. A row that fails to send is
+retried, then written to `data/sheet-queue.json`, and flushed automatically when
+the network returns - in submission order, so the Winners tab never names the
+wrong person on a tie. On top of that the CSV is written locally and
+independently. A registration has to lose a disk write *and* every retry *and*
+the queue file to actually disappear. You should never need to open the CSV;
+it is there so that a dropped connection at 3pm does not cost somebody a prize.
+
+The boot banner and `/api/health` both report the Sheet's state, including how
+many rows are waiting.
 
 ## The leaderboard screen
 

@@ -14,7 +14,11 @@
     "audio": "node tools/get-audio.mjs",
     "board:export": "node tools/board-sync.mjs export",
     "board:import": "node tools/board-sync.mjs import",
-    "winners": "node tools/winners.mjs"
+    "winners": "node tools/winners.mjs",
+    "sheet:test": "node tools/sheet.mjs test",
+    "sheet:backfill": "node tools/sheet.mjs backfill",
+    "sheet:queue": "node tools/sheet.mjs queue",
+    "sheet:flush": "node tools/sheet.mjs flush"
   },
   "dependencies": {
     "@netlify/blobs": "^11.1.0"
