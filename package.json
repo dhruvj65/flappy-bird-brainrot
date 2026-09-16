@@ -18,7 +18,8 @@
     "sheet:test": "node tools/sheet.mjs test",
     "sheet:backfill": "node tools/sheet.mjs backfill",
     "sheet:queue": "node tools/sheet.mjs queue",
-    "sheet:flush": "node tools/sheet.mjs flush"
+    "sheet:flush": "node tools/sheet.mjs flush",
+    "export": "node tools/export.mjs"
   },
   "dependencies": {
     "@netlify/blobs": "^11.1.0"

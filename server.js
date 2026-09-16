@@ -23,6 +23,7 @@ import { loadLocalEnv } from './lib/localEnv.mjs';
    laptop and the public site can never disagree about what a score is worth. */
 import { RegistrationLog } from './lib/registrations.mjs';
 import { SheetMirror } from './lib/sheetMirror.mjs';
+import { HourlyExport } from './lib/hourlyExport.mjs';
 import {
   DEFAULT_LIMIT,
   validateContact,
@@ -53,6 +54,9 @@ const SHEET_URL = process.env.FLAPPY_SHEET_URL || '';
 const SHEET_TOKEN = process.env.FLAPPY_SHEET_TOKEN || '';
 /* Rows that could not be sent wait here until the network comes back. */
 const SHEET_QUEUE_FILE = path.join(DATA_DIR, 'sheet-queue.json');
+/* Hourly CSV export. FLAPPY_EXPORT_DIR is a folder to drop spreadsheets in;
+   unset = off. Written on the hour, every hour. */
+const EXPORT_DIR = process.env.FLAPPY_EXPORT_DIR || '';
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
@@ -227,6 +231,10 @@ const sheet = new SheetMirror({
   token: SHEET_TOKEN,
   queueFile: SHEET_QUEUE_FILE
 });
+const hourly = new HourlyExport({
+  registerFile: REGISTER_FILE,
+  outputDir: EXPORT_DIR
+});
 
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
@@ -290,6 +298,8 @@ async function handleApi(req, res, url) {
       registrations: await register.count(),
       sheet: sheet.describe(),
       sheetQueued: sheet.queue.length,
+      hourlyExport: hourly.describe(),
+      lastExport: hourly.lastRun ? hourly.lastRun.toISOString() : null,
       uptime: Math.round(process.uptime())
     });
   }
@@ -519,6 +529,7 @@ function localAddresses() {
 const count = await store.load();
 const registered = await register.init();
 const queued = await sheet.start();
+const exported = await hourly.start();
 
 server.listen(PORT, HOST, () => {
   console.log('');
@@ -532,6 +543,10 @@ server.listen(PORT, HOST, () => {
     console.log('  google sheet: off (set FLAPPY_SHEET_URL to enable)');
   }
   if (queued) console.log('  ' + queued + ' row(s) queued from a previous run - retrying');
+  console.log('  hourly export: ' + hourly.describe());
+  if (hourly.enabled && exported && exported.nextRunInMs != null) {
+    console.log('  next export : in ' + Math.round(exported.nextRunInMs / 60000) + ' min (on the hour)');
+  }
   console.log('  local       : http://localhost:' + PORT);
   for (const address of localAddresses()) {
     console.log('  network     : http://' + address + ':' + PORT);

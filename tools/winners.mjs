@@ -13,122 +13,31 @@
  * submission wins, which is the same rule the leaderboard itself uses.
  */
 
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+/* Shared with the hourly export, so the number announced at the stall and the
+   number in the exported file are computed by the same code. */
+import { readRegister, winnersByHour, hourKey } from '../lib/registerRead.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FILE = path.join(__dirname, '..', 'data', 'registrations.csv');
 
-/** RFC4180-ish reader: handles quoted fields, embedded commas and newlines. */
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let cell = '';
-  let quoted = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-
-    if (quoted) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') { cell += '"'; i += 1; }
-        else quoted = false;
-      } else cell += ch;
-      continue;
-    }
-
-    if (ch === '"') { quoted = true; continue; }
-    if (ch === ',') { row.push(cell); cell = ''; continue; }
-    if (ch === '\r') continue;
-    if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; continue; }
-    cell += ch;
-  }
-  if (cell.length || row.length) { row.push(cell); rows.push(row); }
-  return rows.filter((r) => r.some((c) => c.trim().length));
+function currentHourKey() {
+  return hourKey(new Date());
 }
 
-/** Undoes the apostrophe the writer adds to defuse Excel formula injection. */
-function unescapeCell(value) {
-  return value.startsWith("'") ? value.slice(1) : value;
-}
-
+/** Reads the register, or explains why it cannot and stops. */
 async function load() {
-  let raw;
-  try {
-    raw = await fs.readFile(FILE, 'utf8');
-  } catch (err) {
-    if (err.code === 'ENOENT') {
-      console.error(
-        '\nNo register yet at data/registrations.csv.\n' +
-          'It is created the first time somebody finishes all three attempts.\n'
-      );
-      process.exit(1);
-    }
-    throw err;
-  }
-
-  // Strip the UTF-8 BOM the writer adds for Excel.
-  if (raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
-
-  const rows = parseCsv(raw);
-  if (rows.length < 2) {
-    console.log('\nThe register is empty - nobody has finished a session yet.\n');
-    process.exit(0);
-  }
-
-  const header = rows[0].map((h) => unescapeCell(h).trim());
-  const index = (name) => header.indexOf(name);
-
-  const iHour = index('hourBucket');
-  const iTime = index('localTime');
-  const iIso = index('submittedAt');
-  const iName = index('name');
-  const iId = index('bitsId');
-  const iPhone = index('phone');
-  const iScore = index('score');
-
-  if (iHour < 0 || iScore < 0) {
-    console.error('data/registrations.csv does not have the expected columns.');
+  const result = await readRegister(FILE);
+  if (!result.ok) {
+    console.error('\n  Could not read the register: ' + result.reason + '\n');
     process.exit(1);
   }
-
-  return rows.slice(1).map((r) => ({
-    hour: unescapeCell(r[iHour] || ''),
-    time: unescapeCell(r[iTime] || ''),
-    iso: unescapeCell(r[iIso] || ''),
-    name: unescapeCell(r[iName] || ''),
-    bitsId: unescapeCell(r[iId] || ''),
-    phone: unescapeCell(r[iPhone] || ''),
-    score: Number(unescapeCell(r[iScore] || '0')) || 0
-  }));
-}
-
-/** Best score per hour; earliest submission wins a tie. */
-function winnersByHour(entries) {
-  const byHour = new Map();
-  for (const entry of entries) {
-    if (!entry.hour) continue;
-    const current = byHour.get(entry.hour);
-    if (!current) { byHour.set(entry.hour, { winner: entry, played: 1 }); continue; }
-    current.played += 1;
-    const better =
-      entry.score > current.winner.score ||
-      (entry.score === current.winner.score && entry.iso < current.winner.iso);
-    if (better) current.winner = entry;
+  if (!result.entries.length) {
+    console.log('\n  ' + result.reason + ' - nobody has finished a session yet.\n');
+    process.exit(0);
   }
-  return [...byHour.entries()]
-    .map(([hour, v]) => ({ hour, ...v }))
-    .sort((a, b) => a.hour.localeCompare(b.hour));
-}
-
-function currentHourKey() {
-  const now = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return (
-    now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) +
-    ' ' + pad(now.getHours()) + ':00'
-  );
+  return result.entries;
 }
 
 function pad(value, width) {

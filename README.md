@@ -342,61 +342,71 @@ It opens straight in Excel. Two details worth knowing:
   by `npm run winners`. It is also why a phone number keeps its `+` instead of
   being read as a subtraction.
 
-### Google Sheets
+### Hourly spreadsheets
 
-The Sheet is meant to be the thing you actually work from during the event. It
-keeps two tabs: **Registrations** (a row per finished session) and **Winners**
-(the top score in each hour, rebuilt on every write). You read the hourly winner
-straight off the Sheet without touching the laptop.
+Point `FLAPPY_EXPORT_DIR` at a folder in `.env.local` and the server writes
+spreadsheets into it on the hour, every hour, while it runs:
 
-Setup is in the header of
-[`tools/google-apps-script.js`](tools/google-apps-script.js) - paste it into a
-Sheet's Apps Script and deploy as a web app. Then, before the event:
+```
+FLAPPY_EXPORT_DIR=C:\Users\you\OneDrive\Documents\flappy_excel
+```
+
+| File | |
+| --- | --- |
+| `registrations.csv` | every session, all hours |
+| `hourly-winners.csv` | one row per hour: who won and how many played |
+| `hour-<date>_<hh>-00.csv` | one completed hour on its own, winner marked |
+
+The per-hour file is the one to open when announcing: only the people who
+played in that hour, sorted by score, winner flagged in the first column.
+Nothing to filter while a crowd waits.
+
+`npm run export` writes them immediately instead of waiting for the hour, and
+takes an optional folder: `npm run export -- "D:\somewhere\else"`.
+
+The schedule is aligned to the clock, not to startup - a server started at
+14:37 still exports at 15:00, not 15:37. A file is written for every completed
+hour rather than only the last one, so a restart across a boundary does not
+leave a hole, and one `npm run export` after the event produces the full set.
+
+These are **derived files**. `data/registrations.csv` is the record and they
+are regenerated from it every time, so a stale export, a file left open in
+Excel, or a crash between hours cannot corrupt anything - the next run repairs
+it. Writes go to a temp file and then rename, so a reader never catches a
+half-written file, which matters when the folder is syncing to OneDrive.
+
+### Google Sheets (optional, off by default)
+
+The same registrations can go to a Google Sheet instead of, or as well as, the
+folder. Setup is in the header of
+[`tools/google-apps-script.js`](tools/google-apps-script.js): paste it into a
+Sheet's Apps Script, deploy as a web app, then check it before the event:
 
 ```bash
 npm run sheet:test -- "https://script.google.com/.../exec"
 ```
 
 That proves the round trip and names the specific misconfiguration if it fails
-(the usual one is the deployment not being shared with "Anyone"). Then:
-
-Then put the URL in `.env.local` (gitignored, created from
-[`.env.local.example`](.env.local.example)) so it survives restarts:
-
-```
-FLAPPY_SHEET_URL=https://script.google.com/.../exec
-FLAPPY_SHEET_TOKEN=a-secret-you-choose
-```
-
-`node server.js` picks it up; the boot banner prints `google sheet: on`. A real
-environment variable still overrides the file for a one-off run.
-
-**The URL is effectively a password** - anyone holding it can append rows to the
-Sheet. That is why it lives in a gitignored file and not in `launch.json` or
-`netlify.toml`, both of which are committed.
-
-`FLAPPY_SHEET_TOKEN` is optional and matches `SHARED_TOKEN` at the top of the
-script. The web app has to accept requests from anyone (the laptop is not
-signed in to your Google account), so without a token the URL is the only thing
-stopping a stranger who finds it from pushing junk rows.
+(the usual one is the deployment not being shared with "Anyone"). Then set
+`FLAPPY_SHEET_URL` in `.env.local`, and optionally `FLAPPY_SHEET_TOKEN` to
+match `SHARED_TOKEN` in the script - the web app has to accept requests from
+anyone, so without a token the URL is the only thing stopping a stranger
+pushing rows.
 
 | Command | |
 | --- | --- |
 | `npm run sheet:test` | check the connection |
-| `npm run sheet:backfill` | push existing CSV rows into the Sheet |
+| `npm run sheet:backfill` | push existing rows into the Sheet |
 | `npm run sheet:queue` | list rows waiting for the network |
 | `npm run sheet:flush` | send those rows now |
 
-**Why the CSV still exists.** Event wifi drops. A row that fails to send is
-retried, then written to `data/sheet-queue.json`, and flushed automatically when
-the network returns - in submission order, so the Winners tab never names the
-wrong person on a tie. On top of that the CSV is written locally and
-independently. A registration has to lose a disk write *and* every retry *and*
-the queue file to actually disappear. You should never need to open the CSV;
-it is there so that a dropped connection at 3pm does not cost somebody a prize.
+Event wifi drops, so a row that fails to send is retried, then written to
+`data/sheet-queue.json` and flushed when the network returns - in submission
+order, so ties still resolve to the right person.
 
-The boot banner and `/api/health` both report the Sheet's state, including how
-many rows are waiting.
+**The Sheet URL is effectively a password.** That is why it lives in a
+gitignored `.env.local` and not in `launch.json` or `netlify.toml`, both of
+which are committed.
 
 ## The leaderboard screen
 
@@ -490,6 +500,9 @@ the stall laptop can start an event from the real standings.
 server.js                     Node HTTP server + leaderboard store (the stall)
 lib/board.mjs                 ranking + validation, shared by both backends
 lib/registrations.mjs         the prize-draw CSV writer
+lib/registerRead.mjs          reading it back + hourly winners
+lib/hourlyExport.mjs          the spreadsheets written on the hour
+lib/localEnv.mjs              .env.local loader
 data/registrations.csv        who played, how to reach them (gitignored)
 tools/winners.mjs             hourly winners, for announcing
 tools/google-apps-script.js   optional Google Sheets mirror
